@@ -1,0 +1,61 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: VoxelFurnitureShop
+      - uses: actions/checkout@v4
+        with:
+          repository: VoxelHorizons/VoxelCore
+          path: VoxelCore
+      - uses: actions/checkout@v4
+        with:
+          repository: VoxelHorizons/VoxelFurniture
+          ref: fix/furniture-inventory-titles
+          path: VoxelFurniture
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Install VoxelCore
+        run: mvn -B -f VoxelCore/pom.xml install -DskipTests
+      - name: Install VoxelFurniture
+        run: mvn -B -f VoxelFurniture/pom.xml install -DskipTests
+      - name: Verify VoxelFurnitureShop
+        run: mvn -B -f VoxelFurnitureShop/pom.xml verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VoxelFurnitureShop
+          path: VoxelFurnitureShop/target/VoxelFurnitureShop-*.jar
+          if-no-files-found: error
+
+  publish:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: VoxelFurnitureShop
+          path: release
+      - name: Publish snapshot release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0-SNAPSHOT
+          name: VoxelFurnitureShop v1.0-SNAPSHOT
+          prerelease: true
+          overwrite_files: true
+          files: release/VoxelFurnitureShop-*.jar
