@@ -43,6 +43,7 @@ public final class ShopService {
     public Map<String, ShopCuboid> regions() { return showroom.regions(); }
     public ShopCuboid region(String id) { return showroom.regions().get(id); }
     public Map<String, ShopCuboid> doors() { return showroom.doors(); }
+    public Map<String, ShopCuboid> furnitureGroups() { return showroom.furnitureGroups(); }
 
     /** Creates a dynamically named display region; existing region IDs are never hardcoded. */
     public void createRegion(String id, ShopCuboid cuboid) {
@@ -52,19 +53,27 @@ public final class ShopService {
     }
     public void setExit(Location exit) { showroom.exit(exit); save(); }
     public void setDoor(String id, ShopCuboid cuboid) { requireId(id); showroom.door(id, cuboid); save(); }
+    public void setFurnitureGroup(String id, ShopCuboid cuboid) {
+        requireId(id); showroom.furnitureGroup(id, cuboid); save();
+    }
+    public void removeFurnitureGroup(String id) {
+        requireId(id);
+        if (!showroom.removeFurnitureGroup(id)) throw new IllegalArgumentException("Unknown furniture group: " + id);
+        save();
+    }
 
     public LayoutSnapshot saveVariant(String regionId, String variant) {
         requireId(variant); ShopCuboid region = requiredRegion(regionId);
         if (snapshots.hasVariant(regionId, variant))
             throw new IllegalArgumentException("Variant already exists; use variant update: " + regionId + "/" + variant);
-        LayoutSnapshot snapshot = layouts.capture(region);
+        LayoutSnapshot snapshot = layouts.capture(region, showroom.furnitureGroups().values());
         snapshots.saveVariant(regionId, variant, snapshot); return snapshot;
     }
     public LayoutSnapshot updateVariant(String regionId, String variant) {
         requireId(variant); ShopCuboid region = requiredRegion(regionId);
         if (!snapshots.hasVariant(regionId, variant))
             throw new IllegalArgumentException("Variant does not exist; use variant save: " + regionId + "/" + variant);
-        LayoutSnapshot snapshot = layouts.capture(region);
+        LayoutSnapshot snapshot = layouts.capture(region, showroom.furnitureGroups().values());
         snapshots.saveVariant(regionId, variant, snapshot); return snapshot;
     }
     public void removeVariant(String regionId, String variant) {
@@ -94,11 +103,18 @@ public final class ShopService {
         int blocks = 0, furniture = 0;
         for (Map.Entry<String, String> selected : plan.entrySet()) {
             LayoutService.ApplyResult result = layouts.apply(requiredRegion(selected.getKey()),
-                    snapshots.loadVariant(selected.getKey(), selected.getValue()));
+                    snapshots.loadVariant(selected.getKey(), selected.getValue()), showroom.furnitureGroups().values());
             blocks += result.blocks(); furniture += result.furniture();
             showroom.activeVariant(selected.getKey(), selected.getValue());
         }
         save(); return new LayoutService.ApplyResult(blocks, furniture);
+    }
+
+    public void clearVariant(String regionId) {
+        ShopCuboid region = requiredRegion(regionId);
+        layouts.clear(region, showroom.furnitureGroups().values());
+        showroom.clearActiveVariant(regionId);
+        save();
     }
     public LayoutSnapshot saveDoor(String doorId, String state, ShopCuboid cuboid) {
         requireId(doorId); requireState(state); setDoor(doorId, cuboid);
@@ -115,6 +131,7 @@ public final class ShopService {
     public Optional<ShopCuboid> at(Location location) {
         for (ShopCuboid region : showroom.regions().values()) if (region.contains(location)) return Optional.of(region);
         for (ShopCuboid door : showroom.doors().values()) if (door.contains(location)) return Optional.of(door);
+        for (ShopCuboid group : showroom.furnitureGroups().values()) if (group.contains(location)) return Optional.of(group);
         return Optional.empty();
     }
 
@@ -154,9 +171,13 @@ public final class ShopService {
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
         for (Player player : new ArrayList<Player>(exit.getWorld().getPlayers()))
             if (insideAnyRegion(player.getLocation())) player.teleport(exit);
+        setFurnitureAnimations(true);
         applyDoors("closed");
     }
-    public void open() { applyDoors("open"); }
+    public void open() {
+        setFurnitureAnimations(false);
+        applyDoors("open");
+    }
 
     private void restockAllRegions() {
         boolean avoid = plugin.getConfig().getBoolean("rotation.avoid-current-variant", true);
@@ -169,7 +190,8 @@ public final class ShopService {
         Map<String, String> plan = VariantPlanner.choose(availableByRegion, showroom.activeVariants(),
                 showroom.requirements(), avoid, random);
         for (Map.Entry<String, String> selected : plan.entrySet()) {
-            layouts.apply(requiredRegion(selected.getKey()), snapshots.loadVariant(selected.getKey(), selected.getValue()));
+            layouts.apply(requiredRegion(selected.getKey()), snapshots.loadVariant(selected.getKey(), selected.getValue()),
+                    showroom.furnitureGroups().values());
             showroom.activeVariant(selected.getKey(), selected.getValue());
         }
         save();
@@ -187,6 +209,13 @@ public final class ShopService {
             resolveRequirements(requirement.getKey(), requirement.getValue(), plan, visiting);
         visiting.remove(key);
     }
+    private void setFurnitureAnimations(boolean active) {
+        int affected = layouts.setUseAnimations(showroom.furnitureGroups().values(), active);
+        if (!showroom.furnitureGroups().isEmpty() && affected == 0) {
+            plugin.getLogger().warning("No animated furniture found inside the configured showroom furniture groups.");
+        }
+    }
+
     private void applyDoors(String state) {
         for (Map.Entry<String, ShopCuboid> door : showroom.doors().entrySet()) {
             if (!snapshots.hasDoor(door.getKey(), state)) {
