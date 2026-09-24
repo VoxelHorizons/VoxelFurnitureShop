@@ -56,6 +56,17 @@ public final class SnapshotRepository {
         return load(path("variants", region, variant));
     }
 
+    public boolean hasVariant(String region, String variant) {
+        return Files.exists(path("variants", region, variant));
+    }
+
+    public void removeVariant(String region, String variant) {
+        Path file = path("variants", region, variant);
+        if (!Files.exists(file)) throw new IllegalArgumentException("Variant does not exist: " + region + "/" + variant);
+        try { Files.delete(file); }
+        catch (IOException exception) { throw new IllegalStateException("Unable to remove " + file, exception); }
+    }
+
     public List<String> variants(String region) {
         Path directory = root.resolve("variants").resolve(safe(region));
         if (!Files.isDirectory(directory)) return Collections.emptyList();

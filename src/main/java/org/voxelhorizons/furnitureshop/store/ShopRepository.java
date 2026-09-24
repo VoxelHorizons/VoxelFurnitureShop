@@ -31,6 +31,17 @@ public final class ShopRepository {
             });
             ConfigurationSection active = yaml.getConfigurationSection("showroom.active");
             if (active != null) for (String region : active.getKeys(false)) result.activeVariant(region, active.getString(region));
+            ConfigurationSection requirements = yaml.getConfigurationSection("showroom.requirements");
+            if (requirements != null) for (String region : requirements.getKeys(false)) {
+                ConfigurationSection variants = requirements.getConfigurationSection(region);
+                if (variants == null) continue;
+                for (String variant : variants.getKeys(false)) {
+                    ConfigurationSection required = variants.getConfigurationSection(variant);
+                    if (required == null) continue;
+                    for (String requiredRegion : required.getKeys(false))
+                        result.require(region, variant, requiredRegion, required.getString(requiredRegion));
+                }
+            }
             result.lastDay(yaml.getLong("showroom.last_day", -1L));
             return result;
         }
@@ -74,6 +85,11 @@ public final class ShopRepository {
             writeCuboid(yaml, "showroom.doors." + entry.getKey(), entry.getValue());
         for (Map.Entry<String, String> entry : showroom.activeVariants().entrySet())
             yaml.set("showroom.active." + entry.getKey(), entry.getValue());
+        for (Map.Entry<String, Map<String, Map<String, String>>> region : showroom.requirements().entrySet())
+            for (Map.Entry<String, Map<String, String>> variant : region.getValue().entrySet())
+                for (Map.Entry<String, String> required : variant.getValue().entrySet())
+                    yaml.set("showroom.requirements." + region.getKey() + "." + variant.getKey() + "."
+                            + required.getKey(), required.getValue());
         yaml.set("showroom.last_day", showroom.lastDay());
         try { Files.createDirectories(file.getParent()); yaml.save(file.toFile()); }
         catch (IOException exception) { throw new IllegalStateException("Unable to save " + file, exception); }

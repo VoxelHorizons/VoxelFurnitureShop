@@ -50,7 +50,17 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
             }
             if ("variant".equalsIgnoreCase(args[0]) && args.length == 4) {
                 if ("save".equalsIgnoreCase(args[1])) { LayoutSnapshot value = shops.saveVariant(args[2], args[3]); ok(sender, counts("Saved " + args[2] + " variant " + args[3], value)); return true; }
+                if ("update".equalsIgnoreCase(args[1])) { LayoutSnapshot value = shops.updateVariant(args[2], args[3]); ok(sender, counts("Updated " + args[2] + " variant " + args[3], value)); return true; }
+                if ("remove".equalsIgnoreCase(args[1])) { shops.removeVariant(args[2], args[3]); ok(sender, "Removed " + args[2] + " variant " + args[3] + " and its requirements."); return true; }
                 if ("apply".equalsIgnoreCase(args[1])) { LayoutService.ApplyResult value = shops.applyVariant(args[2], args[3]); ok(sender, "Applied " + value.blocks() + " blocks and " + value.furniture() + " furniture."); return true; }
+            }
+            if ("variant".equalsIgnoreCase(args[0]) && args.length == 6 && "require".equalsIgnoreCase(args[1])) {
+                shops.requireVariant(args[2], args[3], args[4], args[5]);
+                ok(sender, args[2] + "/" + args[3] + " now requires " + args[4] + "/" + args[5] + "."); return true;
+            }
+            if ("variant".equalsIgnoreCase(args[0]) && args.length == 5 && "unrequire".equalsIgnoreCase(args[1])) {
+                shops.unrequireVariant(args[2], args[3], args[4]);
+                ok(sender, "Removed the " + args[4] + " requirement from " + args[2] + "/" + args[3] + "."); return true;
             }
             if (args.length == 1 && "rotate".equalsIgnoreCase(args[0])) { shops.rotate(); ok(sender, "Full showroom rotation started."); return true; }
             if (args.length == 1 && "close".equalsIgnoreCase(args[0])) { shops.close(); ok(sender, "All showroom doors closed."); return true; }
@@ -83,7 +93,9 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
         s.sendMessage(ChatColor.GOLD + "VoxelFurnitureShop commands");
         s.sendMessage(ChatColor.YELLOW + "/vfs pos1|pos2" + ChatColor.GRAY + " - select blocks under your crosshair");
         s.sendMessage(ChatColor.YELLOW + "/vfs shop create <region>" + ChatColor.GRAY + " - create a dynamic display region");
-        s.sendMessage(ChatColor.YELLOW + "/vfs variant save|apply <region> <setup>");
+        s.sendMessage(ChatColor.YELLOW + "/vfs variant save|update|remove|apply <region> <setup>");
+        s.sendMessage(ChatColor.YELLOW + "/vfs variant require <region> <setup> <required-region> <required-setup>");
+        s.sendMessage(ChatColor.YELLOW + "/vfs variant unrequire <region> <setup> <required-region>");
         s.sendMessage(ChatColor.YELLOW + "/vfs door save <door> <open|closed>" + ChatColor.GRAY + " - record a shared door state");
         s.sendMessage(ChatColor.YELLOW + "/vfs exit" + ChatColor.GRAY + " - set the shared evacuation exit here");
         s.sendMessage(ChatColor.YELLOW + "/vfs rotate|close|open | edit [on|off] | list");
@@ -95,12 +107,17 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) return match(args[0], Arrays.asList("help", "pos1", "pos2", "shop", "variant", "door", "exit", "rotate", "close", "open", "edit", "list"));
         if (args.length == 2 && "shop".equalsIgnoreCase(args[0])) return match(args[1], Collections.singletonList("create"));
-        if (args.length == 2 && "variant".equalsIgnoreCase(args[0])) return match(args[1], Arrays.asList("save", "apply"));
+        if (args.length == 2 && "variant".equalsIgnoreCase(args[0])) return match(args[1], Arrays.asList("save", "update", "remove", "apply", "require", "unrequire"));
         if (args.length == 2 && "door".equalsIgnoreCase(args[0])) return match(args[1], Collections.singletonList("save"));
         if (args.length == 2 && "edit".equalsIgnoreCase(args[0])) return match(args[1], Arrays.asList("on", "off"));
         if (args.length == 3 && "variant".equalsIgnoreCase(args[0])) return match(args[2], new ArrayList<String>(shops.regions().keySet()));
         if (args.length == 3 && "door".equalsIgnoreCase(args[0])) return match(args[2], new ArrayList<String>(shops.doors().keySet()));
-        if (args.length == 4 && "variant".equalsIgnoreCase(args[0]) && "apply".equalsIgnoreCase(args[1])) return match(args[3], shops.variants(args[2]));
+        if (args.length == 4 && "variant".equalsIgnoreCase(args[0]) && !"save".equalsIgnoreCase(args[1])) return match(args[3], shops.variants(args[2]));
+        if (args.length == 5 && "variant".equalsIgnoreCase(args[0])
+                && ("require".equalsIgnoreCase(args[1]) || "unrequire".equalsIgnoreCase(args[1])))
+            return match(args[4], new ArrayList<String>(shops.regions().keySet()));
+        if (args.length == 6 && "variant".equalsIgnoreCase(args[0]) && "require".equalsIgnoreCase(args[1]))
+            return match(args[5], shops.variants(args[4]));
         if (args.length == 4 && "door".equalsIgnoreCase(args[0])) return match(args[3], Arrays.asList("open", "closed"));
         return Collections.emptyList();
     }
