@@ -37,7 +37,8 @@ public final class VoxelFurnitureShop extends JavaPlugin {
                     @Override public void run() { try { shops.checkDayChanges(); } catch (RuntimeException e) { getLogger().log(Level.SEVERE, "Daily shop check failed", e); } }
                 }, period, period);
             }
-            getLogger().info("VoxelFurnitureShop ready with " + shops.shops().size() + " shop(s).");
+            getLogger().info("VoxelFurnitureShop ready with " + shops.regions().size() + " display region(s) and "
+                    + shops.doors().size() + " shared door(s).");
         } catch (RuntimeException exception) {
             getLogger().log(Level.SEVERE, "VoxelFurnitureShop failed to initialize", exception);
             getServer().getPluginManager().disablePlugin(this);
