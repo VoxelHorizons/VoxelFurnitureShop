@@ -18,16 +18,46 @@ public final class SnapshotRepository {
 
     public SnapshotRepository(Path root) { this.root = root; }
 
-    public void saveVariant(String shop, String slot, String variant, LayoutSnapshot snapshot) {
-        save(path("variants", shop, slot, variant), snapshot);
+    /** Moves schema-one fixture snapshots into the shared-door namespace without deleting the originals. */
+    public void migrateLegacyFixtures() {
+        Path fixtures = root.resolve("fixtures");
+        if (!Files.isDirectory(fixtures)) return;
+        try {
+            java.nio.file.DirectoryStream<Path> shops = Files.newDirectoryStream(fixtures);
+            try {
+                for (Path shop : shops) {
+                    if (!Files.isDirectory(shop)) continue;
+                    java.nio.file.DirectoryStream<Path> fixtureDirectories = Files.newDirectoryStream(shop);
+                    try {
+                        for (Path fixture : fixtureDirectories) {
+                            if (!Files.isDirectory(fixture)) continue;
+                            String door = shop.getFileName().toString() + "_" + fixture.getFileName().toString();
+                            Path destination = root.resolve("doors").resolve(safe(door));
+                            Files.createDirectories(destination);
+                            java.nio.file.DirectoryStream<Path> states = Files.newDirectoryStream(fixture, "*.yml");
+                            try {
+                                for (Path state : states) {
+                                    Path target = destination.resolve(state.getFileName());
+                                    if (!Files.exists(target)) Files.copy(state, target);
+                                }
+                            } finally { states.close(); }
+                        }
+                    } finally { fixtureDirectories.close(); }
+                }
+            } finally { shops.close(); }
+        } catch (IOException exception) { throw new IllegalStateException("Unable to migrate legacy fixture snapshots", exception); }
     }
 
-    public LayoutSnapshot loadVariant(String shop, String slot, String variant) {
-        return load(path("variants", shop, slot, variant));
+    public void saveVariant(String region, String variant, LayoutSnapshot snapshot) {
+        save(path("variants", region, variant), snapshot);
     }
 
-    public List<String> variants(String shop, String slot) {
-        Path directory = root.resolve("variants").resolve(safe(shop)).resolve(safe(slot));
+    public LayoutSnapshot loadVariant(String region, String variant) {
+        return load(path("variants", region, variant));
+    }
+
+    public List<String> variants(String region) {
+        Path directory = root.resolve("variants").resolve(safe(region));
         if (!Files.isDirectory(directory)) return Collections.emptyList();
         List<String> result = new ArrayList<String>();
         try {
@@ -43,20 +73,20 @@ public final class SnapshotRepository {
         return result;
     }
 
-    public void saveFixture(String shop, String fixture, String state, LayoutSnapshot snapshot) {
-        save(path("fixtures", shop, fixture, state), snapshot);
+    public void saveDoor(String door, String state, LayoutSnapshot snapshot) {
+        save(path("doors", door, state), snapshot);
     }
 
-    public LayoutSnapshot loadFixture(String shop, String fixture, String state) {
-        return load(path("fixtures", shop, fixture, state));
+    public LayoutSnapshot loadDoor(String door, String state) {
+        return load(path("doors", door, state));
     }
 
-    public boolean hasFixture(String shop, String fixture, String state) {
-        return Files.exists(path("fixtures", shop, fixture, state));
+    public boolean hasDoor(String door, String state) {
+        return Files.exists(path("doors", door, state));
     }
 
-    private Path path(String type, String owner, String region, String name) {
-        return root.resolve(type).resolve(safe(owner)).resolve(safe(region)).resolve(safe(name) + ".yml");
+    private Path path(String type, String region, String name) {
+        return root.resolve(type).resolve(safe(region)).resolve(safe(name) + ".yml");
     }
 
     private static String safe(String value) {
