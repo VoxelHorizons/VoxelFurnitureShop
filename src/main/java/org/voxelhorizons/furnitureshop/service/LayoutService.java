@@ -14,8 +14,13 @@ import org.voxelhorizons.furnitureshop.model.RecordedFurniture;
 import org.voxelhorizons.furnitureshop.model.ShopCuboid;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 public final class LayoutService {
     private final FurnitureManager furniture;
@@ -24,6 +29,11 @@ public final class LayoutService {
 
     @SuppressWarnings("deprecation")
     public LayoutSnapshot capture(ShopCuboid cuboid) {
+        return capture(cuboid, Collections.<ShopCuboid>emptyList());
+    }
+
+    @SuppressWarnings("deprecation")
+    public LayoutSnapshot capture(ShopCuboid cuboid, Collection<ShopCuboid> persistentFurniture) {
         List<RecordedBlock> blocks = new ArrayList<RecordedBlock>();
         for (Block block : cuboid.blocks()) {
             boolean collision = furniture.byBlock(block).isPresent();
@@ -34,7 +44,7 @@ public final class LayoutService {
         List<RecordedFurniture> recorded = new ArrayList<RecordedFurniture>();
         for (FurnitureInstance instance : furniture.instances()) {
             Location location = instance.location();
-            if (!cuboid.contains(location)) continue;
+            if (!cuboid.contains(location) || insideAny(location, persistentFurniture)) continue;
             recorded.add(new RecordedFurniture(instance.definitionId().toString(),
                     location.getX() - cuboid.minX(), location.getY() - cuboid.minY(),
                     location.getZ() - cuboid.minZ(), instance.yaw()));
@@ -43,18 +53,37 @@ public final class LayoutService {
     }
 
     public void clear(ShopCuboid cuboid) {
+        clear(cuboid, Collections.<ShopCuboid>emptyList());
+    }
+
+    public void clear(ShopCuboid cuboid, Collection<ShopCuboid> persistentFurniture) {
+        Set<UUID> preserved = new HashSet<UUID>();
         List<FurnitureInstance> remove = new ArrayList<FurnitureInstance>();
-        for (FurnitureInstance instance : furniture.instances()) if (cuboid.contains(instance.location())) remove.add(instance);
+        for (FurnitureInstance instance : furniture.instances()) {
+            if (!cuboid.contains(instance.location())) continue;
+            if (insideAny(instance.location(), persistentFurniture)) preserved.add(instance.id());
+            else remove.add(instance);
+        }
         for (FurnitureInstance instance : remove) furniture.remove(instance.id(), false);
         List<Block> blocks = cuboid.blocks();
-        for (int i = blocks.size() - 1; i >= 0; i--) blocks.get(i).setType(Material.AIR, false);
+        for (int i = blocks.size() - 1; i >= 0; i--) {
+            Block block = blocks.get(i);
+            Optional<FurnitureInstance> owner = furniture.byBlock(block);
+            if (owner.isPresent() && preserved.contains(owner.get().id())) continue;
+            block.setType(Material.AIR, false);
+        }
     }
 
     public ApplyResult apply(ShopCuboid cuboid, LayoutSnapshot snapshot) {
+        return apply(cuboid, snapshot, Collections.<ShopCuboid>emptyList());
+    }
+
+    public ApplyResult apply(ShopCuboid cuboid, LayoutSnapshot snapshot,
+                             Collection<ShopCuboid> persistentFurniture) {
         World world = cuboid.world();
         if (world == null) throw new IllegalStateException("World is not loaded: " + cuboid.worldName());
         validate(cuboid, snapshot);
-        clear(cuboid);
+        clear(cuboid, persistentFurniture);
         int restoredBlocks = 0;
         for (RecordedBlock value : snapshot.blocks()) {
             if (Material.AIR.name().equals(value.material())) continue;
@@ -74,6 +103,22 @@ public final class LayoutService {
             restoredFurniture++;
         }
         return new ApplyResult(restoredBlocks, restoredFurniture);
+    }
+
+    public int setUseAnimations(Collection<ShopCuboid> groups, boolean active) {
+        Set<UUID> selected = new HashSet<UUID>();
+        int changed = 0;
+        for (FurnitureInstance instance : furniture.instances()) {
+            if (!insideAny(instance.location(), groups) || !selected.add(instance.id())) continue;
+            if (furniture.setUseAnimation(instance, active)) changed++;
+        }
+        return changed;
+    }
+
+    private static boolean insideAny(Location location, Collection<ShopCuboid> cuboids) {
+        if (cuboids == null || cuboids.isEmpty()) return false;
+        for (ShopCuboid cuboid : cuboids) if (cuboid.contains(location)) return true;
+        return false;
     }
 
     private static void validate(ShopCuboid cuboid, LayoutSnapshot snapshot) {
