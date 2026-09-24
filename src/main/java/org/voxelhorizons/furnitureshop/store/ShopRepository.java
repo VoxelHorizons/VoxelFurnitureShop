@@ -29,6 +29,9 @@ public final class ShopRepository {
             readCuboids(yaml.getConfigurationSection("showroom.doors"), new CuboidConsumer() {
                 @Override public void accept(String key, ShopCuboid value) { result.door(key, value); }
             });
+            readCuboids(yaml.getConfigurationSection("showroom.furniture"), new CuboidConsumer() {
+                @Override public void accept(String key, ShopCuboid value) { result.furnitureGroup(key, value); }
+            });
             ConfigurationSection active = yaml.getConfigurationSection("showroom.active");
             if (active != null) for (String region : active.getKeys(false)) result.activeVariant(region, active.getString(region));
             ConfigurationSection requirements = yaml.getConfigurationSection("showroom.requirements");
@@ -77,12 +80,14 @@ public final class ShopRepository {
 
     public void save(ShowroomDefinition showroom) {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema", 2);
+        yaml.set("schema", 3);
         if (showroom.exit() != null) writeLocation(yaml, "showroom.exit", showroom.exit());
         for (Map.Entry<String, ShopCuboid> entry : showroom.regions().entrySet())
             writeCuboid(yaml, "showroom.regions." + entry.getKey(), entry.getValue());
         for (Map.Entry<String, ShopCuboid> entry : showroom.doors().entrySet())
             writeCuboid(yaml, "showroom.doors." + entry.getKey(), entry.getValue());
+        for (Map.Entry<String, ShopCuboid> entry : showroom.furnitureGroups().entrySet())
+            writeCuboid(yaml, "showroom.furniture." + entry.getKey(), entry.getValue());
         for (Map.Entry<String, String> entry : showroom.activeVariants().entrySet())
             yaml.set("showroom.active." + entry.getKey(), entry.getValue());
         for (Map.Entry<String, Map<String, Map<String, String>>> region : showroom.requirements().entrySet())
