@@ -1,0 +1,17 @@
+name: VoxelFurnitureShop
+version: ${project.version}
+main: org.voxelhorizons.furnitureshop.VoxelFurnitureShop
+author: VoxelHorizons
+description: Recorded, rotating furniture showroom layouts for VoxelFurniture.
+depend: [VoxelCore, VoxelFurniture]
+commands:
+  vfshop:
+    description: Manage recorded furniture showrooms.
+    usage: /vfshop help
+    aliases: [vfs]
+permissions:
+  voxelfurnitureshop.admin:
+    default: op
+  voxelfurnitureshop.edit:
+    default: op
+

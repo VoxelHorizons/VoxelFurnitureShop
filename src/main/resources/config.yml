@@ -1,0 +1,10 @@
+schema: 1
+
+rotation:
+  enabled: true
+  # A Minecraft day is 24000 ticks (normally 20 real minutes). Shops rotate when the world day changes.
+  check-interval-ticks: 100
+  restock-delay-ticks: 80
+  reopen-delay-ticks: 20
+  avoid-current-variant: true
+
