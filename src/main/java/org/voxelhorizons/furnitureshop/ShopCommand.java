@@ -2,6 +2,8 @@ package org.voxelhorizons.furnitureshop;
 
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -32,8 +34,8 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
         if (!sender.hasPermission("voxelfurnitureshop.admin")) { bad(sender, "You do not have permission."); return true; }
         try {
             if (args.length == 0 || "help".equalsIgnoreCase(args[0])) { help(sender); return true; }
-            if ("pos1".equalsIgnoreCase(args[0])) { first.put(player(sender).getUniqueId(), player(sender).getLocation()); ok(sender, "First point selected."); return true; }
-            if ("pos2".equalsIgnoreCase(args[0])) { second.put(player(sender).getUniqueId(), player(sender).getLocation()); ok(sender, "Second point selected."); return true; }
+            if ("pos1".equalsIgnoreCase(args[0])) { select(sender, first, "First"); return true; }
+            if ("pos2".equalsIgnoreCase(args[0])) { select(sender, second, "Second"); return true; }
             if ("edit".equalsIgnoreCase(args[0])) {
                 Player player = player(sender); Boolean requested = args.length < 2 ? null : Boolean.valueOf("on".equalsIgnoreCase(args[1]));
                 ok(sender, "Shop editing " + (shops.toggleEditor(player, requested) ? "enabled" : "disabled") + "."); return true;
@@ -68,6 +70,15 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
         if (a == null || b == null) throw new IllegalStateException("Select both corners with /vfs pos1 and /vfs pos2 first.");
         return ShopCuboid.between(a, b);
     }
+    @SuppressWarnings("deprecation")
+    private void select(CommandSender sender, Map<UUID, Location> selections, String label) {
+        Player player = player(sender);
+        Block target = player.getTargetBlock(null, 100);
+        if (target == null || target.getType() == Material.AIR)
+            throw new IllegalStateException("Look at a block within 100 blocks and try again.");
+        selections.put(player.getUniqueId(), target.getLocation());
+        ok(sender, label + " point selected at " + target.getX() + ", " + target.getY() + ", " + target.getZ() + ".");
+    }
     private static Player player(CommandSender sender) { if (!(sender instanceof Player)) throw new IllegalStateException("This command requires a player."); return (Player) sender; }
     private static String counts(String prefix, LayoutSnapshot value) { return prefix + ": " + value.blocks().size() + " blocks, " + value.furniture().size() + " furniture."; }
     private void list(CommandSender sender, String id) {
@@ -77,7 +88,7 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
     }
     private static void help(CommandSender s) {
         s.sendMessage(ChatColor.GOLD + "VoxelFurnitureShop commands");
-        s.sendMessage(ChatColor.YELLOW + "/vfs pos1|pos2" + ChatColor.GRAY + " - select an inclusive cuboid");
+        s.sendMessage(ChatColor.YELLOW + "/vfs pos1|pos2" + ChatColor.GRAY + " - select the block under your crosshair");
         s.sendMessage(ChatColor.YELLOW + "/vfs shop create <shop> | shop exit <shop>");
         s.sendMessage(ChatColor.YELLOW + "/vfs slot create <shop> <slot>");
         s.sendMessage(ChatColor.YELLOW + "/vfs variant save|apply <shop> <slot> <variant>");

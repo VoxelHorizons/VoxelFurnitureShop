@@ -16,7 +16,7 @@ Snapshots preserve every block in a selected cuboid and each VoxelFurniture inst
 All identifiers use lowercase letters, numbers, `_`, and `-`. Selection cuboids are inclusive.
 
 1. Enable editing with `/vfs edit on`.
-2. Stand at opposite corners of the complete shop and run `/vfs pos1` and `/vfs pos2`.
+2. Look at the blocks forming opposite corners of the complete shop and run `/vfs pos1` and `/vfs pos2`.
 3. Run `/vfs shop create main`. Your current position becomes the evacuation exit; use `/vfs shop exit main` later to change it.
 4. Select a display area and run `/vfs slot create main living_room`.
 5. Build one arrangement inside that area and record it with `/vfs variant save main living_room modern_oak`.
@@ -84,7 +84,7 @@ The complete shop cuboid is protected from block placement/breaking, fluids, fir
 
 | Command | Purpose |
 |---|---|
-| `/vfs pos1`, `/vfs pos2` | Select an inclusive cuboid |
+| `/vfs pos1`, `/vfs pos2` | Select the block under your crosshair as an inclusive cuboid corner |
 | `/vfs shop create <shop>` | Create the protected shop using the selection |
 | `/vfs shop exit <shop>` | Set the evacuation destination |
 | `/vfs slot create <shop> <slot>` | Define an independently randomized display region |

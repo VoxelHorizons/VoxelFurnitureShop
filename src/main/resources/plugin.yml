@@ -1,6 +1,7 @@
 name: VoxelFurnitureShop
 version: ${project.version}
 main: org.voxelhorizons.furnitureshop.VoxelFurnitureShop
+api-version: '1.13'
 author: VoxelHorizons
 description: Recorded, rotating furniture showroom layouts for VoxelFurniture.
 depend: [VoxelCore, VoxelFurniture]
@@ -14,4 +15,3 @@ permissions:
     default: op
   voxelfurnitureshop.edit:
     default: op
-
