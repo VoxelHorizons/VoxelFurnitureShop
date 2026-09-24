@@ -6,6 +6,8 @@ No region names are hardcoded. Every region is created in-game and persisted in 
 
 Snapshots preserve every block in a selected cuboid and each VoxelFurniture instance whose origin is inside it, including its exact fractional position and yaw. Furniture collision blocks are omitted from block snapshots and recreated by VoxelFurniture.
 
+Persistent showroom furniture groups are separate from randomized variants. Furniture inside one of these groups is never captured into, removed by, or duplicated by variant snapshots. The group stays physically present while VoxelFurnitureShop forces its persistent `animation.use` state closed during restocking and back to normal when the showroom reopens.
+
 ## Requirements
 
 - VoxelCore
@@ -52,6 +54,14 @@ Rebuild the same region and save more setups. Test one directly with:
 ```
 
 Every region is randomized during a full showroom rotation, subject to any cross-region requirements below.
+
+To clear the current dynamic contents while authoring another layout:
+
+```text
+/vfs variant clear main
+```
+
+This removes the region's current variant blocks/furniture and clears its active-variant marker, but preserves any registered persistent showroom furniture such as curtains or shutters.
 
 Update or remove an existing setup explicitly:
 
@@ -107,6 +117,36 @@ Additional entrances or window shutters can use their own dynamic names:
 
 Doors are global. `/vfs close` applies the closed state of every recorded door together, and `/vfs open` applies every open state together.
 
+## Persistent animated showroom furniture
+
+Place the normal/open furniture exactly where it should remain permanently, then select a cuboid containing it and register that selection:
+
+```text
+/vfs pos1
+/vfs pos2
+/vfs furniture save front_curtains
+```
+
+The furniture itself remains owned and persisted by VoxelFurniture; VoxelFurnitureShop only records the selected group area. During variant save/update/apply/clear, furniture whose origin is inside a persistent group is excluded from the variant snapshot and preserved in place. Managed collision blocks belonging to preserved furniture are also left untouched.
+
+The furniture definitions must use the persistent non-inventory animation system, for example:
+
+```yaml
+properties:
+  furniture:
+    animation:
+      use: voxel:curtain_closed
+      sync_neighbors: true
+```
+
+When the showroom closes, every animatable furniture instance inside the registered groups is explicitly set to its active/use state. When the showroom opens, they are explicitly reset to the normal state. This is idempotent, so retries cannot accidentally toggle the curtains in the wrong direction. Neighbor synchronization continues to work according to the VoxelFurniture definition.
+
+Remove a registration without deleting the furniture itself with:
+
+```text
+/vfs furniture remove front_curtains
+```
+
 ## Shared evacuation exit and rotation
 
 Stand outside the building where visitors should be sent and run:
@@ -124,9 +164,11 @@ Test the complete lifecycle with:
 The plugin then:
 
 1. evacuates players found inside any defined display region to the shared exit;
-2. closes every shared door;
-3. independently selects and restores one setup for every dynamic display region;
-4. reopens every shared door.
+2. forces persistent showroom furniture such as curtains/shutters into their closed animation state;
+3. closes every shared door;
+4. independently selects and restores one setup for every dynamic display region behind the closed furniture;
+5. restores persistent showroom furniture to its normal/open animation state;
+6. reopens every shared door.
 
 Automatic rotation follows changes in `World#getFullTime() / 24000`. A vanilla Minecraft day is 20 real minutes; altered world time progression changes the real-time interval naturally.
 
@@ -149,14 +191,17 @@ rotation:
 | `/vfs variant update <region> <setup>` | Replace an existing setup with the region's current contents |
 | `/vfs variant remove <region> <setup>` | Delete a setup and references to it |
 | `/vfs variant apply <region> <setup>` | Restore a setup for testing |
+| `/vfs variant clear <region>` | Clear dynamic region contents while preserving persistent showroom furniture |
 | `/vfs variant require <region> <setup> <required-region> <required-setup>` | Require a matching setup in another region |
 | `/vfs variant unrequire <region> <setup> <required-region>` | Remove one cross-region requirement |
 | `/vfs door save <door> <open\|closed>` | Record a globally shared door state |
+| `/vfs furniture save <group>` | Register the selected persistent animated furniture area |
+| `/vfs furniture remove <group>` | Remove a persistent furniture-group registration |
 | `/vfs exit` | Set the one shared evacuation location |
 | `/vfs close`, `/vfs open` | Close or open every door together |
 | `/vfs rotate` | Run the complete showroom lifecycle |
 | `/vfs edit [on\|off]` | Toggle protected-region authoring mode |
-| `/vfs list` | List all dynamic regions and shared doors |
+| `/vfs list` | List dynamic regions, shared doors, and persistent furniture groups |
 
 Commands include contextual tab completion.
 
@@ -168,7 +213,7 @@ The first startup transparently upgrades schema-one `shops.yml` data:
 - all recorded cuboid coordinates are retained;
 - the first existing exit becomes the shared showroom exit;
 - existing fixtures are imported as globally shared doors using collision-safe prefixed names;
-- the result is immediately persisted as schema two.
+- the result is immediately persisted in the current schema. Existing schema-two files load transparently and are upgraded to schema three when saved.
 
 Before conversion, the original file is retained as `shops.yml.schema1.bak`.
 

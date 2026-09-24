@@ -11,6 +11,7 @@ public final class ShowroomDefinition {
     private Location exit;
     private final Map<String, ShopCuboid> regions = new LinkedHashMap<String, ShopCuboid>();
     private final Map<String, ShopCuboid> doors = new LinkedHashMap<String, ShopCuboid>();
+    private final Map<String, ShopCuboid> furnitureGroups = new LinkedHashMap<String, ShopCuboid>();
     private final Map<String, String> activeVariants = new LinkedHashMap<String, String>();
     private final Map<String, Map<String, Map<String, String>>> requirements =
             new LinkedHashMap<String, Map<String, Map<String, String>>>();
@@ -20,13 +21,17 @@ public final class ShowroomDefinition {
     public void exit(Location value) { exit = value == null ? null : value.clone(); }
     public Map<String, ShopCuboid> regions() { return Collections.unmodifiableMap(regions); }
     public Map<String, ShopCuboid> doors() { return Collections.unmodifiableMap(doors); }
+    public Map<String, ShopCuboid> furnitureGroups() { return Collections.unmodifiableMap(furnitureGroups); }
     public Map<String, String> activeVariants() { return Collections.unmodifiableMap(activeVariants); }
     public void region(String id, ShopCuboid cuboid) { regions.put(id, cuboid); }
     public void door(String id, ShopCuboid cuboid) { doors.put(id, cuboid); }
+    public void furnitureGroup(String id, ShopCuboid cuboid) { furnitureGroups.put(id, cuboid); }
+    public boolean removeFurnitureGroup(String id) { return furnitureGroups.remove(id) != null; }
     public void activeVariant(String region, String variant) { activeVariants.put(region, variant); }
     public void clearActiveVariant(String region, String variant) {
         if (variant.equals(activeVariants.get(region))) activeVariants.remove(region);
     }
+    public void clearActiveVariant(String region) { activeVariants.remove(region); }
     public Map<String, Map<String, Map<String, String>>> requirements() { return deepCopy(requirements); }
     public Map<String, String> requirements(String region, String variant) {
         Map<String, Map<String, String>> variants = requirements.get(region);

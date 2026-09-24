@@ -21,7 +21,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: VoxelHorizons/VoxelFurniture
-          ref: main
+          # PR #35 exposes the idempotent animation-state API used by this branch.
+          # Other branches continue to build against VoxelFurniture main.
+          ref: ${{ (github.ref == 'refs/heads/feature/persistent-shop-furniture' || github.head_ref == 'feature/persistent-shop-furniture') && 'feature/set-use-animation-state' || 'main' }}
           path: VoxelFurniture
       - uses: actions/setup-java@v4
         with:
