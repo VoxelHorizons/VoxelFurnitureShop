@@ -123,11 +123,32 @@ public final class ShopService {
     public List<String> variants(String region) { requiredRegion(region); return snapshots.variants(region); }
 
     public boolean isEditor(Player player) { return player != null && editors.contains(player.getUniqueId()); }
+    /** An editor must have both the permission and active edit mode to remain during evacuation. */
+    public boolean canEdit(Player player) {
+        return player != null && player.hasPermission("voxelfurnitureshop.edit") && isEditor(player);
+    }
     public boolean toggleEditor(Player player, Boolean value) {
         boolean enabled = value == null ? !isEditor(player) : value.booleanValue();
         if (enabled) editors.add(player.getUniqueId()); else editors.remove(player.getUniqueId());
         return enabled;
     }
+    /**
+     * Shop-controlled fixtures must not respond to any player's clicks, including editors.
+     * Inventory furniture remains usable as a showroom demonstration.
+     */
+    public boolean isControlledFixture(org.voxelhorizons.furniture.model.FurnitureInstance instance) {
+        if (instance == null) return false;
+        Location location = instance.location();
+        boolean fixtureArea = insideAny(location, showroom.doors().values())
+                || insideAny(location, showroom.furnitureGroups().values());
+        boolean shopArea = fixtureArea || insideAnyRegion(location);
+        if (!shopArea) return false;
+        org.voxelhorizons.furniture.model.FurnitureDefinition definition =
+                layouts.definition(instance).orElse(null);
+        if (definition != null && definition.hasInventory()) return false;
+        return fixtureArea || (definition != null && definition.animationUseModel() != null);
+    }
+
     public Optional<ShopCuboid> at(Location location) {
         for (ShopCuboid region : showroom.regions().values()) if (region.contains(location)) return Optional.of(region);
         for (ShopCuboid door : showroom.doors().values()) if (door.contains(location)) return Optional.of(door);
@@ -170,7 +191,7 @@ public final class ShopService {
         Location exit = showroom.exit();
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
         for (Player player : new ArrayList<Player>(exit.getWorld().getPlayers()))
-            if (insideAnyRegion(player.getLocation())) player.teleport(exit);
+            if (insideAnyRegion(player.getLocation()) && !canEdit(player)) player.teleport(exit);
         setFurnitureAnimations(true);
         applyDoors("closed");
     }
