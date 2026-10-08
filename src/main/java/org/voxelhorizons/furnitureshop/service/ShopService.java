@@ -145,8 +145,9 @@ public final class ShopService {
         if (!shopArea) return false;
         org.voxelhorizons.furniture.model.FurnitureDefinition definition =
                 layouts.definition(instance).orElse(null);
-        if (definition != null && definition.hasInventory()) return false;
-        return fixtureArea || (definition != null && definition.animationUseModel() != null);
+        return blocksFixtureInteraction(shopArea, fixtureArea,
+                definition != null && definition.hasInventory(),
+                definition != null && definition.animationUseModel() != null);
     }
 
     public boolean isControlledFixture(org.bukkit.block.Block block) {
@@ -155,6 +156,21 @@ public final class ShopService {
 
     public boolean isControlledFixture(java.util.UUID entityId) {
         return entityId != null && layouts.byEntity(entityId).map(this::isControlledFixture).orElse(false);
+    }
+
+    /** Shop fixtures are owned by VoxelFurnitureShop, not by individual players. */
+    public static boolean blocksFixtureInteraction(boolean shopArea, boolean fixtureArea,
+                                                    boolean hasInventory, boolean animated) {
+        return shopArea && !hasInventory && (fixtureArea || animated);
+    }
+
+    public static boolean shouldEvacuate(boolean inside, boolean permittedEditor) {
+        return inside && !permittedEditor;
+    }
+
+    private static boolean insideAny(Location location, Iterable<ShopCuboid> regions) {
+        for (ShopCuboid region : regions) if (region.contains(location)) return true;
+        return false;
     }
 
     public Optional<ShopCuboid> at(Location location) {
@@ -199,7 +215,7 @@ public final class ShopService {
         Location exit = showroom.exit();
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
         for (Player player : new ArrayList<Player>(exit.getWorld().getPlayers()))
-            if (insideAnyRegion(player.getLocation()) && !canEdit(player)) player.teleport(exit);
+            if (shouldEvacuate(insideAnyRegion(player.getLocation()), canEdit(player))) player.teleport(exit);
         setFurnitureAnimations(true);
         applyDoors("closed");
     }
