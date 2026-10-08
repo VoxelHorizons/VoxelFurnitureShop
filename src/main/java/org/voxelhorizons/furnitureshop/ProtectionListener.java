@@ -19,6 +19,9 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.voxelhorizons.furniture.event.FurnitureInteractEvent;
+import org.bukkit.event.block.Action;
 import org.voxelhorizons.furniture.event.FurnitureBreakEvent;
 import org.voxelhorizons.furniture.event.FurniturePlaceEvent;
 import org.voxelhorizons.furnitureshop.service.ShopService;
@@ -29,7 +32,7 @@ public final class ProtectionListener implements Listener {
     private final ShopService shops;
     public ProtectionListener(ShopService shops) { this.shops = shops; }
     private boolean protectedBlock(Block block) { return block != null && shops.at(block.getLocation()).isPresent(); }
-    private boolean bypass(Player player) { return player != null && player.hasPermission("voxelfurnitureshop.edit") && shops.isEditor(player); }
+    private boolean bypass(Player player) { return shops.canEdit(player); }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void breakBlock(BlockBreakEvent event) { if (protectedBlock(event.getBlock()) && !bypass(event.getPlayer())) event.setCancelled(true); }
@@ -68,11 +71,33 @@ public final class ProtectionListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void furnitureBreak(FurnitureBreakEvent event) { if (shops.at(event.getInstance().location()).isPresent() && !bypass(event.getPlayer())) event.setCancelled(true); }
 
+    // Cancel before VoxelFurniture's HIGHEST listener can dye or animate managed fixtures.
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void controlledBlockInteraction(PlayerInteractEvent event) {
+        if (event.getClickedBlock() == null) return;
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK && event.getAction() != Action.LEFT_CLICK_BLOCK) return;
+        if (shops.isControlledFixture(event.getClickedBlock())) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void controlledEntityInteraction(PlayerInteractEntityEvent event) {
+        if (shops.isControlledFixture(event.getRightClicked().getUniqueId())) event.setCancelled(true);
+    }
+
+    // Defensive fallback for other VoxelFurniture callers that dispatch its custom event directly.
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void controlledFurnitureInteraction(FurnitureInteractEvent event) {
+        if (shops.isControlledFixture(event.getInstance())) event.setCancelled(true);
+    }
+
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void interact(PlayerInteractEvent event) {
         Block block = event.getClickedBlock();
-        if (!protectedBlock(block) || bypass(event.getPlayer())) return;
+        if (!protectedBlock(block)) return;
+        // Recorded doors are shop-owned fixtures even when a builder is in edit mode.
         String name = block.getType().name();
-        if (name.contains("DOOR") || name.contains("TRAP_DOOR") || name.contains("TRAPDOOR")) event.setCancelled(true);
+        if (name.contains("DOOR") || name.contains("TRAP_DOOR") || name.contains("TRAPDOOR")) {
+            event.setCancelled(true);
+        }
     }
 }

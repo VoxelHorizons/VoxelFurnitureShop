@@ -35,7 +35,7 @@ Repeat with any identifiers required by the building:
 
 These identifiers are examples only. Existing regions previously created with `/vfs shop create` are automatically migrated to the new showroom structure without recreating their cuboids.
 
-Enable `/vfs edit on` while authoring inside protected regions, then disable it with `/vfs edit off` when finished.
+Enable `/vfs edit on` while authoring inside protected regions, then disable it with `/vfs edit off` when finished. Players with `voxelfurnitureshop.edit` **and** active edit mode are not teleported to the evacuation exit when the shop closes or rotates, so editors can work inside the closed building. Other players are still evacuated.
 
 ## Record display setups
 
@@ -139,7 +139,7 @@ properties:
       sync_neighbors: true
 ```
 
-When the showroom closes, every animatable furniture instance inside the registered groups is explicitly set to its active/use state. When the showroom opens, they are explicitly reset to the normal state. This is idempotent, so retries cannot accidentally toggle the curtains in the wrong direction. Neighbor synchronization continues to work according to the VoxelFurniture definition.
+When the showroom closes, every animatable furniture instance inside the registered groups is explicitly set to its active/use state. When the showroom opens, they are explicitly reset to the normal state. This is idempotent, so retries cannot accidentally toggle the curtains in the wrong direction. Neighbor synchronization continues to work according to the VoxelFurniture definition. Players cannot click, dye, or toggle shop-managed animated furniture (including registered curtain groups or furniture in shared door areas), even with edit mode enabled; VoxelFurnitureShop owns those states. Ordinary inventory furniture remains interactive so storage drawers and containers can be demonstrated. Animated furniture elsewhere inside the display regions is also protected from player toggling.
 
 Remove a registration without deleting the furniture itself with:
 
@@ -163,7 +163,7 @@ Test the complete lifecycle with:
 
 The plugin then:
 
-1. evacuates players found inside any defined display region to the shared exit;
+1. evacuates visitors found inside any defined display region to the shared exit, keeping permitted active editors in place;
 2. forces persistent showroom furniture such as curtains/shutters into their closed animation state;
 3. closes every shared door;
 4. independently selects and restores one setup for every dynamic display region behind the closed furniture;
