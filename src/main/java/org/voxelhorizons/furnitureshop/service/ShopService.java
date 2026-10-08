@@ -149,6 +149,14 @@ public final class ShopService {
         return fixtureArea || (definition != null && definition.animationUseModel() != null);
     }
 
+    public boolean isControlledFixture(org.bukkit.block.Block block) {
+        return block != null && layouts.byBlock(block).map(this::isControlledFixture).orElse(false);
+    }
+
+    public boolean isControlledFixture(java.util.UUID entityId) {
+        return entityId != null && layouts.byEntity(entityId).map(this::isControlledFixture).orElse(false);
+    }
+
     public Optional<ShopCuboid> at(Location location) {
         for (ShopCuboid region : showroom.regions().values()) if (region.contains(location)) return Optional.of(region);
         for (ShopCuboid door : showroom.doors().values()) if (door.contains(location)) return Optional.of(door);
