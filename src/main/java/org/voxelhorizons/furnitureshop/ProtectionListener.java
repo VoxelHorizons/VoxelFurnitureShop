@@ -93,8 +93,11 @@ public final class ProtectionListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void interact(PlayerInteractEvent event) {
         Block block = event.getClickedBlock();
-        if (!protectedBlock(block) || bypass(event.getPlayer())) return;
+        if (!protectedBlock(block)) return;
+        // Recorded doors are shop-owned fixtures even when a builder is in edit mode.
         String name = block.getType().name();
-        if (name.contains("DOOR") || name.contains("TRAP_DOOR") || name.contains("TRAPDOOR")) event.setCancelled(true);
+        if (name.contains("DOOR") || name.contains("TRAP_DOOR") || name.contains("TRAPDOOR")) {
+            event.setCancelled(true);
+        }
     }
 }
