@@ -27,6 +27,18 @@ public final class LayoutService {
 
     public LayoutService(FurnitureManager furniture) { this.furniture = furniture; }
 
+    public Optional<FurnitureDefinition> definition(FurnitureInstance instance) {
+        return instance == null ? Optional.<FurnitureDefinition>empty() : furniture.definition(instance.definitionId());
+    }
+
+    public Optional<FurnitureInstance> byEntity(UUID entityId) {
+        return furniture.byEntity(entityId);
+    }
+
+    public Optional<FurnitureInstance> byBlock(Block block) {
+        return furniture.byBlock(block);
+    }
+
     @SuppressWarnings("deprecation")
     public LayoutSnapshot capture(ShopCuboid cuboid) {
         return capture(cuboid, Collections.<ShopCuboid>emptyList());
