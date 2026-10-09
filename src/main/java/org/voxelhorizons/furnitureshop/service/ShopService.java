@@ -29,6 +29,7 @@ public final class ShopService {
     private final ShowroomDefinition showroom;
     private final Set<UUID> editors = new LinkedHashSet<UUID>();
     private final Random random = new Random();
+    private final Map<String, LayoutSnapshot> activeSnapshotCache = new LinkedHashMap<String, LayoutSnapshot>();
     private boolean rotating;
     private boolean showroomOpen = true;
 
@@ -45,13 +46,31 @@ public final class ShopService {
     public LayoutService layouts() { return layouts; }
     public boolean isOpen() { return showroomOpen; }
     public boolean editing() { return !editors.isEmpty(); }
+    /** Only furniture physically recorded in an active variant receives a shop tooltip. */
     public boolean isActiveVariantFurniture(org.voxelhorizons.furniture.model.FurnitureInstance instance) {
         if (instance == null || !showroomOpen) return false;
         Location location = instance.location();
         if (insideAny(location, showroom.furnitureGroups().values())
                 || insideAny(location, showroom.doors().values())) return false;
         for (Map.Entry<String, ShopCuboid> entry : showroom.regions().entrySet()) {
-            if (showroom.activeVariants().containsKey(entry.getKey()) && entry.getValue().contains(location)) return true;
+            ShopCuboid region = entry.getValue();
+            String variant = showroom.activeVariants().get(entry.getKey());
+            if (variant == null || !region.contains(location)) continue;
+            String key = entry.getKey() + "/" + variant;
+            LayoutSnapshot snapshot = activeSnapshotCache.get(key);
+            if (snapshot == null) {
+                try { snapshot = snapshots.loadVariant(entry.getKey(), variant); }
+                catch (RuntimeException missing) { return false; }
+                activeSnapshotCache.put(key, snapshot);
+            }
+            for (org.voxelhorizons.furnitureshop.model.RecordedFurniture recorded : snapshot.furniture()) {
+                if (recorded.definition().equals(instance.definitionId().toString())
+                        && Math.abs(recorded.x() - (location.getX() - region.minX())) < 0.01D
+                        && Math.abs(recorded.y() - (location.getY() - region.minY())) < 0.01D
+                        && Math.abs(recorded.z() - (location.getZ() - region.minZ())) < 0.01D) {
+                    return true;
+                }
+            }
         }
         return false;
     }
@@ -81,7 +100,9 @@ public final class ShopService {
         if (snapshots.hasVariant(regionId, variant))
             throw new IllegalArgumentException("Variant already exists; use variant update: " + regionId + "/" + variant);
         LayoutSnapshot snapshot = layouts.capture(region, showroom.furnitureGroups().values());
-        snapshots.saveVariant(regionId, variant, snapshot); return snapshot;
+        snapshots.saveVariant(regionId, variant, snapshot);
+        activeSnapshotCache.remove(regionId + "/" + variant);
+        return snapshot;
     }
     public LayoutSnapshot updateVariant(String regionId, String variant) {
         requireId(variant); ShopCuboid region = requiredRegion(regionId);
@@ -93,6 +114,7 @@ public final class ShopService {
     public void removeVariant(String regionId, String variant) {
         requireId(variant); requiredRegion(regionId);
         snapshots.removeVariant(regionId, variant);
+        activeSnapshotCache.remove(regionId + "/" + variant);
         showroom.clearActiveVariant(regionId, variant);
         showroom.removeRequirementsFor(regionId, variant);
         save();
@@ -121,10 +143,12 @@ public final class ShopService {
             blocks += result.blocks(); furniture += result.furniture();
             showroom.activeVariant(selected.getKey(), selected.getValue());
         }
+        activeSnapshotCache.clear();
         save(); return new LayoutService.ApplyResult(blocks, furniture);
     }
 
     public void clearVariant(String regionId) {
+        activeSnapshotCache.clear();
         ShopCuboid region = requiredRegion(regionId);
         layouts.clear(region, showroom.furnitureGroups().values());
         showroom.clearActiveVariant(regionId);
@@ -266,6 +290,7 @@ public final class ShopService {
                     showroom.furnitureGroups().values());
             showroom.activeVariant(selected.getKey(), selected.getValue());
         }
+        activeSnapshotCache.clear();
         save();
     }
     private void resolveRequirements(String region, String variant, LinkedHashMap<String, String> plan, Set<String> visiting) {
