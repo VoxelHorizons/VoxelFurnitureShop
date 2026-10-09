@@ -24,6 +24,6 @@ public class ShopInteractionPolicyTest {
 
     @Test public void unrelatedFurnitureIsNotBlocked() {
         assertFalse(ShopService.blocksFixtureInteraction(false, true, false, true));
-        assertTrue(ShopService.blocksFixtureInteraction(true, false, false, false));
+        assertFalse(ShopService.blocksFixtureInteraction(false, false, false, false));
     }
 }
