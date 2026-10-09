@@ -3,6 +3,7 @@ package org.voxelhorizons.furnitureshop;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Entity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -23,6 +24,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.voxelhorizons.furniture.event.FurnitureInteractEvent;
+import org.voxelhorizons.furniture.model.FurnitureInstance;
 import org.bukkit.event.block.Action;
 import org.voxelhorizons.furniture.event.FurnitureBreakEvent;
 import org.voxelhorizons.furniture.event.FurniturePlaceEvent;
@@ -37,7 +39,24 @@ public final class ProtectionListener implements Listener {
     private boolean bypass(Player player) { return shops.canEdit(player); }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void breakBlock(BlockBreakEvent event) { if (protectedBlock(event.getBlock()) && !bypass(event.getPlayer())) event.setCancelled(true); }
+    public void breakBlock(BlockBreakEvent event) {
+        boolean protectedArea = protectedBlock(event.getBlock());
+        if (!protectedArea) return;
+        Player player = event.getPlayer();
+        if (!bypass(player)) {
+            event.setCancelled(true);
+            return;
+        }
+        // Collision blocks need to be removed through VoxelFurniture, otherwise
+        // its HIGHEST listener unconditionally cancels the vanilla break and
+        // demands a separate voxelfurniture.break permission.
+        java.util.Optional<FurnitureInstance> instance = shops.layouts().byBlock(event.getBlock());
+        if (instance.isPresent()) {
+            event.setCancelled(true);
+            shops.layouts().breakFurniture(player, instance.get());
+        }
+        // Ordinary building blocks are intentionally left to Minecraft.
+    }
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void placeBlock(BlockPlaceEvent event) { if (protectedBlock(event.getBlock()) && !bypass(event.getPlayer())) event.setCancelled(true); }
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -78,17 +97,40 @@ public final class ProtectionListener implements Listener {
     public void controlledBlockInteraction(PlayerInteractEvent event) {
         if (event.getClickedBlock() == null) return;
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK && event.getAction() != Action.LEFT_CLICK_BLOCK) return;
-        if (shops.isControlledFixture(event.getClickedBlock())) event.setCancelled(true);
+        if (!shops.isControlledFixture(event.getClickedBlock())) return;
+        Player player = event.getPlayer();
+        if (event.getAction() == Action.LEFT_CLICK_BLOCK && bypass(player)) {
+            java.util.Optional<FurnitureInstance> instance = shops.layouts().byBlock(event.getClickedBlock());
+            if (instance.isPresent()) {
+                // Do not fall through into VoxelFurniture's normal break handler:
+                // its voxelfurniture.break permission must not gate shop editors.
+                event.setCancelled(true);
+                shops.layouts().breakFurniture(player, instance.get());
+                return;
+            }
+        }
+        if (shouldBlockControlledInteraction(bypass(player), event.getAction() == Action.LEFT_CLICK_BLOCK)) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void controlledEntityInteraction(PlayerInteractEntityEvent event) {
-        if (shops.isControlledFixture(event.getRightClicked().getUniqueId())) event.setCancelled(true);
+        if (shops.isControlledFixture(event.getRightClicked().getUniqueId())
+                && !bypass(event.getPlayer())) event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void protectFurnitureDamage(EntityDamageByEntityEvent event) {
-        if (shops.isControlledFixture(event.getEntity().getUniqueId())) event.setCancelled(true);
+        if (!shops.isControlledFixture(event.getEntity().getUniqueId())) return;
+        if (event.getDamager() instanceof Player && bypass((Player) event.getDamager())) {
+            Player editor = (Player) event.getDamager();
+            java.util.Optional<FurnitureInstance> instance = shops.layouts().byEntity(event.getEntity().getUniqueId());
+            event.setCancelled(true);
+            if (instance.isPresent()) shops.layouts().breakFurniture(editor, instance.get());
+            return;
+        }
+        event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -99,13 +141,21 @@ public final class ProtectionListener implements Listener {
     // Defensive fallback for other VoxelFurniture callers that dispatch its custom event directly.
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void controlledFurnitureInteraction(FurnitureInteractEvent event) {
-        if (shops.isControlledFixture(event.getInstance())) event.setCancelled(true);
+        if (shops.isControlledFixture(event.getInstance()) && !bypass(event.getPlayer())) event.setCancelled(true);
+    }
+
+    /**
+     * Interaction protection is for visitors; editors may left-click furniture
+     * to remove it, but never trigger shop inventory/animation on right-click.
+     */
+    static boolean shouldBlockControlledInteraction(boolean editor, boolean leftClick) {
+        return !editor || !leftClick;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void interact(PlayerInteractEvent event) {
         Block block = event.getClickedBlock();
-        if (!protectedBlock(block)) return;
+        if (!protectedBlock(block) || bypass(event.getPlayer())) return;
         // Recorded doors are shop-owned fixtures even when a builder is in edit mode.
         String name = block.getType().name();
         if (name.contains("DOOR") || name.contains("TRAP_DOOR") || name.contains("TRAPDOOR")) {
