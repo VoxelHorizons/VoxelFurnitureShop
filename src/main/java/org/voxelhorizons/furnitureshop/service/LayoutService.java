@@ -1,6 +1,7 @@
 package org.voxelhorizons.furnitureshop.service;
 
 import org.bukkit.Location;
+import org.bukkit.entity.Player;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -41,6 +42,15 @@ public final class LayoutService {
 
     public Optional<FurnitureInstance> byBlock(Block block) {
         return furniture.byBlock(block);
+    }
+
+    /**
+     * Break furniture through VoxelFurniture's event-aware removal path. This
+     * fires FurnitureBreakEvent, clears its collision blocks and render entities,
+     * and respects other listeners that cancel a break.
+     */
+    public boolean breakFurniture(Player player, FurnitureInstance instance) {
+        return furniture.breakFurniture(player, instance);
     }
 
     @SuppressWarnings("deprecation")
