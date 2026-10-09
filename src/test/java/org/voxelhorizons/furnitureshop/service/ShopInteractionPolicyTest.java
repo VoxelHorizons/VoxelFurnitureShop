@@ -16,13 +16,14 @@ public class ShopInteractionPolicyTest {
         assertTrue(ShopService.blocksFixtureInteraction(true, false, false, true));
     }
 
-    @Test public void inventoryDemonstrationsKeepWorkingInsideTheShop() {
-        assertFalse(ShopService.blocksFixtureInteraction(true, true, true, true));
-        assertFalse(ShopService.blocksFixtureInteraction(true, false, true, false));
+    @Test public void allShopFurnitureInteractionsAreSuppressedIncludingInventories() {
+        assertTrue(ShopService.blocksFixtureInteraction(true, true, true, true));
+        assertTrue(ShopService.blocksFixtureInteraction(true, false, true, false));
+        assertTrue(ShopService.blocksFixtureInteraction(true, false, false, false));
     }
 
     @Test public void unrelatedFurnitureIsNotBlocked() {
         assertFalse(ShopService.blocksFixtureInteraction(false, true, false, true));
-        assertFalse(ShopService.blocksFixtureInteraction(true, false, false, false));
+        assertFalse(ShopService.blocksFixtureInteraction(false, false, false, false));
     }
 }

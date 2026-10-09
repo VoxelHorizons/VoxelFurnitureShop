@@ -27,6 +27,10 @@ public final class LayoutService {
 
     public LayoutService(FurnitureManager furniture) { this.furniture = furniture; }
 
+    public java.util.Collection<FurnitureInstance> placedFurniture() { return furniture.instances(); }
+    public java.util.OptionalDouble value(FurnitureInstance instance) { return furniture.value(instance); }
+    public String displayName(FurnitureInstance instance) { return furniture.displayName(instance.definitionId()); }
+
     public Optional<FurnitureDefinition> definition(FurnitureInstance instance) {
         return instance == null ? Optional.<FurnitureDefinition>empty() : furniture.definition(instance.definitionId());
     }

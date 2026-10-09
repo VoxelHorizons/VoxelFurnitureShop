@@ -13,6 +13,8 @@ import java.util.logging.Level;
 
 public final class VoxelFurnitureShop extends JavaPlugin {
     private ShopService shops;
+    private ShopGameModeListener modes;
+    private ShopTooltipService tooltips;
 
     @Override public void onEnable() {
         saveDefaultConfig();
@@ -31,6 +33,18 @@ public final class VoxelFurnitureShop extends JavaPlugin {
             if (command == null) throw new IllegalStateException("vfshop command is missing from plugin.yml");
             command.setExecutor(executor); command.setTabCompleter(executor);
             getServer().getPluginManager().registerEvents(new ProtectionListener(shops), this);
+            modes = new ShopGameModeListener(shops);
+            getServer().getPluginManager().registerEvents(modes, this);
+            getServer().getScheduler().runTaskTimer(this, new Runnable() {
+                @Override public void run() { modes.synchronize(); }
+            }, 1L, 5L);
+            if (getConfig().getBoolean("tooltip.enabled", false)) {
+                tooltips = new ShopTooltipService(this, shops);
+                long period = Math.max(1L, getConfig().getLong("tooltip.check-interval-ticks", 5L));
+                getServer().getScheduler().runTaskTimer(this, new Runnable() {
+                    @Override public void run() { tooltips.tick(); }
+                }, period, period);
+            }
             if (getConfig().getBoolean("rotation.enabled", true)) {
                 long period = Math.max(20L, getConfig().getLong("rotation.check-interval-ticks", 100L));
                 getServer().getScheduler().runTaskTimer(this, new Runnable() {
@@ -45,5 +59,9 @@ public final class VoxelFurnitureShop extends JavaPlugin {
         }
     }
 
-    @Override public void onDisable() { if (shops != null) shops.save(); }
+    @Override public void onDisable() {
+        if (tooltips != null) tooltips.shutdown();
+        if (modes != null) modes.shutdown();
+        if (shops != null) shops.save();
+    }
 }

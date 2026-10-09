@@ -29,7 +29,9 @@ public final class ShopService {
     private final ShowroomDefinition showroom;
     private final Set<UUID> editors = new LinkedHashSet<UUID>();
     private final Random random = new Random();
+    private final Map<String, LayoutSnapshot> activeSnapshotCache = new LinkedHashMap<String, LayoutSnapshot>();
     private boolean rotating;
+    private boolean showroomOpen = true;
 
     public ShopService(JavaPlugin plugin, ShopRepository store, SnapshotRepository snapshots, LayoutService layouts) {
         this.plugin = plugin; this.store = store; this.snapshots = snapshots; this.layouts = layouts;
@@ -41,6 +43,37 @@ public final class ShopService {
 
     public ShowroomDefinition showroom() { return showroom; }
     public Map<String, ShopCuboid> regions() { return showroom.regions(); }
+    public LayoutService layouts() { return layouts; }
+    public boolean isOpen() { return showroomOpen; }
+    public boolean editing() { return !editors.isEmpty(); }
+    /** Only furniture physically recorded in an active variant receives a shop tooltip. */
+    public boolean isActiveVariantFurniture(org.voxelhorizons.furniture.model.FurnitureInstance instance) {
+        if (instance == null || !showroomOpen) return false;
+        Location location = instance.location();
+        if (insideAny(location, showroom.furnitureGroups().values())
+                || insideAny(location, showroom.doors().values())) return false;
+        for (Map.Entry<String, ShopCuboid> entry : showroom.regions().entrySet()) {
+            ShopCuboid region = entry.getValue();
+            String variant = showroom.activeVariants().get(entry.getKey());
+            if (variant == null || !region.contains(location)) continue;
+            String key = entry.getKey() + "/" + variant;
+            LayoutSnapshot snapshot = activeSnapshotCache.get(key);
+            if (snapshot == null) {
+                try { snapshot = snapshots.loadVariant(entry.getKey(), variant); }
+                catch (RuntimeException missing) { return false; }
+                activeSnapshotCache.put(key, snapshot);
+            }
+            for (org.voxelhorizons.furnitureshop.model.RecordedFurniture recorded : snapshot.furniture()) {
+                if (recorded.definition().equals(instance.definitionId().toString())
+                        && Math.abs(recorded.x() - (location.getX() - region.minX())) < 0.01D
+                        && Math.abs(recorded.y() - (location.getY() - region.minY())) < 0.01D
+                        && Math.abs(recorded.z() - (location.getZ() - region.minZ())) < 0.01D) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     public ShopCuboid region(String id) { return showroom.regions().get(id); }
     public Map<String, ShopCuboid> doors() { return showroom.doors(); }
     public Map<String, ShopCuboid> furnitureGroups() { return showroom.furnitureGroups(); }
@@ -67,18 +100,23 @@ public final class ShopService {
         if (snapshots.hasVariant(regionId, variant))
             throw new IllegalArgumentException("Variant already exists; use variant update: " + regionId + "/" + variant);
         LayoutSnapshot snapshot = layouts.capture(region, showroom.furnitureGroups().values());
-        snapshots.saveVariant(regionId, variant, snapshot); return snapshot;
+        snapshots.saveVariant(regionId, variant, snapshot);
+        activeSnapshotCache.remove(regionId + "/" + variant);
+        return snapshot;
     }
     public LayoutSnapshot updateVariant(String regionId, String variant) {
         requireId(variant); ShopCuboid region = requiredRegion(regionId);
         if (!snapshots.hasVariant(regionId, variant))
             throw new IllegalArgumentException("Variant does not exist; use variant save: " + regionId + "/" + variant);
         LayoutSnapshot snapshot = layouts.capture(region, showroom.furnitureGroups().values());
-        snapshots.saveVariant(regionId, variant, snapshot); return snapshot;
+        snapshots.saveVariant(regionId, variant, snapshot);
+        activeSnapshotCache.remove(regionId + "/" + variant);
+        return snapshot;
     }
     public void removeVariant(String regionId, String variant) {
         requireId(variant); requiredRegion(regionId);
         snapshots.removeVariant(regionId, variant);
+        activeSnapshotCache.remove(regionId + "/" + variant);
         showroom.clearActiveVariant(regionId, variant);
         showroom.removeRequirementsFor(regionId, variant);
         save();
@@ -107,10 +145,12 @@ public final class ShopService {
             blocks += result.blocks(); furniture += result.furniture();
             showroom.activeVariant(selected.getKey(), selected.getValue());
         }
+        activeSnapshotCache.clear();
         save(); return new LayoutService.ApplyResult(blocks, furniture);
     }
 
     public void clearVariant(String regionId) {
+        activeSnapshotCache.clear();
         ShopCuboid region = requiredRegion(regionId);
         layouts.clear(region, showroom.furnitureGroups().values());
         showroom.clearActiveVariant(regionId);
@@ -129,13 +169,17 @@ public final class ShopService {
     }
     public boolean toggleEditor(Player player, Boolean value) {
         boolean enabled = value == null ? !isEditor(player) : value.booleanValue();
+        if (enabled && !player.hasPermission("voxelfurnitureshop.edit")) {
+            throw new IllegalStateException("You do not have showroom edit permission.");
+        }
+        if (enabled && rotating) throw new IllegalStateException("Wait until the current rotation finishes.");
         if (enabled) editors.add(player.getUniqueId()); else editors.remove(player.getUniqueId());
+        if (!enabled && !showroomOpen && insideAnyRegion(player.getLocation()) && showroom.exit() != null) {
+            player.teleport(showroom.exit());
+        }
         return enabled;
     }
-    /**
-     * Shop-controlled fixtures must not respond to any player's clicks, including editors.
-     * Inventory furniture remains usable as a showroom demonstration.
-     */
+    /** All shop furniture interactions, including inventories and animations, are disabled. */
     public boolean isControlledFixture(org.voxelhorizons.furniture.model.FurnitureInstance instance) {
         if (instance == null) return false;
         Location location = instance.location();
@@ -161,7 +205,7 @@ public final class ShopService {
     /** Shop fixtures are owned by VoxelFurnitureShop, not by individual players. */
     public static boolean blocksFixtureInteraction(boolean shopArea, boolean fixtureArea,
                                                     boolean hasInventory, boolean animated) {
-        return shopArea && !hasInventory && (fixtureArea || animated);
+        return shopArea;
     }
 
     public static boolean shouldEvacuate(boolean inside, boolean permittedEditor) {
@@ -181,15 +225,22 @@ public final class ShopService {
     }
 
     public void checkDayChanges() {
+        if (rotating) return;
         World world = showroomWorld();
         if (world == null) return;
         long day = world.getFullTime() / 24000L;
+        // Consume day changes during editing without replacing any unfinished builds.
+        if (editing()) {
+            if (showroom.lastDay() != day) { showroom.lastDay(day); save(); }
+            return;
+        }
         if (showroom.lastDay() < 0L) { showroom.lastDay(day); save(); return; }
-        if (day > showroom.lastDay()) { showroom.lastDay(day); save(); rotate(); }
+        if (day > showroom.lastDay()) { rotate(); showroom.lastDay(day); save(); }
     }
 
     /** Closes, redraws, and reopens the one physical showroom as a single transaction. */
     public void rotate() {
+        if (editing()) throw new IllegalStateException("Rotation is paused while showroom edit mode is active.");
         if (rotating) throw new IllegalStateException("Showroom rotation is already running.");
         rotating = true;
         try { close(); }
@@ -214,12 +265,14 @@ public final class ShopService {
     public void close() {
         Location exit = showroom.exit();
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
+        showroomOpen = false;
         for (Player player : new ArrayList<Player>(exit.getWorld().getPlayers()))
-            if (shouldEvacuate(insideAnyRegion(player.getLocation()), canEdit(player))) player.teleport(exit);
+            if (shouldEvacuate(at(player.getLocation()).isPresent(), canEdit(player))) player.teleport(exit);
         setFurnitureAnimations(true);
         applyDoors("closed");
     }
     public void open() {
+        showroomOpen = true;
         setFurnitureAnimations(false);
         applyDoors("open");
     }
@@ -239,6 +292,7 @@ public final class ShopService {
                     showroom.furnitureGroups().values());
             showroom.activeVariant(selected.getKey(), selected.getValue());
         }
+        activeSnapshotCache.clear();
         save();
     }
     private void resolveRequirements(String region, String variant, LinkedHashMap<String, String> plan, Set<String> visiting) {
@@ -287,5 +341,9 @@ public final class ShopService {
     private static void requireId(String id) {
         if (id == null || !id.matches("[a-z0-9_-]+")) throw new IllegalArgumentException("Identifiers use lowercase letters, numbers, _ and -");
     }
+    public void removeEditor(Player player) {
+        if (player != null) editors.remove(player.getUniqueId());
+    }
+
     public void save() { store.save(showroom); }
 }

@@ -7,4 +7,14 @@ rotation:
   restock-delay-ticks: 80
   reopen-delay-ticks: 20
   avoid-current-variant: true
-
+tooltip:
+  enabled: true
+  tooltip: default
+  # Only active variant furniture with an explicit configured value displays this tooltip.
+  # Fixtures, curtains and shared doors are excluded.
+  max-distance: 5.0
+  check-interval-ticks: 5
+  lore:
+  - "&f<furniture>"
+  - "&6<furniture_value> &f:shop_coin:"
+  - "&f:shop_mouse: &7Click to Buy"
