@@ -10,15 +10,13 @@ rotation:
 tooltip:
   enabled: true
   tooltip: default
-  # Only active variant furniture with an explicit configured value displays this tooltip.
-  # Fixtures, curtains and shared doors are excluded.
-  # Furniture without worth metadata still displays its name (but is not for sale).
-  unpriced-label: 'Price unavailable'
-  buy-label: 'Click to Buy'
-  not-for-sale-label: 'Not for sale'
+  # Only active-variant furniture gets tooltips; fixtures are excluded.
+  # A missing furniture value selects the alternative second and third lines.
+  unavailable-line: "&6Price unavailable &f:shop_coin:"
+  sale-line: "&f:shop_mouse: &7Click to Buy"
+  not-for-sale-line: "&f:shop_mouse: &7Not for sale"
   max-distance: 5.0
   check-interval-ticks: 5
   lore:
   - "&f<furniture>"
   - "&6<furniture_value> &f:shop_coin:"
-  - "&f:shop_mouse: &7<furniture_action>"
