@@ -33,12 +33,28 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
         if (!sender.hasPermission("voxelfurnitureshop.admin")) { bad(sender, "You do not have permission."); return true; }
         try {
             if (args.length == 0 || "help".equalsIgnoreCase(args[0])) { help(sender); return true; }
+            if ("reload".equalsIgnoreCase(args[0]) && args.length == 1) {
+                org.bukkit.plugin.Plugin current = org.bukkit.Bukkit.getPluginManager().getPlugin("VoxelFurnitureShop");
+                if (!(current instanceof VoxelFurnitureShop)) throw new IllegalStateException("Shop plugin is unavailable.");
+                ((VoxelFurnitureShop) current).reloadShopConfig();
+                ok(sender, "Configuration reloaded. Tooltip settings and scheduled rotation checks updated.");
+                return true;
+            }
+            if ("tooltip".equalsIgnoreCase(args[0]) && args.length == 2 && "debug".equalsIgnoreCase(args[1])) {
+                org.bukkit.plugin.Plugin current = org.bukkit.Bukkit.getPluginManager().getPlugin("VoxelFurnitureShop");
+                if (current instanceof VoxelFurnitureShop) {
+                    ok(sender, ((VoxelFurnitureShop) current).tooltipDiagnostics(player(sender)));
+                }
+                return true;
+            }
             if ("pos1".equalsIgnoreCase(args[0])) { select(sender, first, "First"); return true; }
             if ("pos2".equalsIgnoreCase(args[0])) { select(sender, second, "Second"); return true; }
             if ("exit".equalsIgnoreCase(args[0]) && args.length == 1) { shops.setExit(player(sender).getLocation()); ok(sender, "Updated the shared evacuation exit."); return true; }
             if ("edit".equalsIgnoreCase(args[0])) {
                 Player player = player(sender); Boolean requested = args.length < 2 ? null : Boolean.valueOf("on".equalsIgnoreCase(args[1]));
-                ok(sender, "Shop editing " + (shops.toggleEditor(player, requested) ? "enabled" : "disabled") + "."); return true;
+                boolean editing = shops.toggleEditor(player, requested);
+                synchronizeModes();
+                ok(sender, "Shop editing " + (editing ? "enabled" : "disabled") + "."); return true;
             }
             if ("shop".equalsIgnoreCase(args[0]) && args.length == 3 && "create".equalsIgnoreCase(args[1])) {
                 shops.createRegion(args[2], selection(player(sender))); ok(sender, "Created dynamic shop region " + args[2] + "."); return true;
@@ -77,12 +93,17 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
                 ok(sender, "Removed the " + args[4] + " requirement from " + args[2] + "/" + args[3] + "."); return true;
             }
             if (args.length == 1 && "rotate".equalsIgnoreCase(args[0])) { shops.rotate(); ok(sender, "Full showroom rotation started."); return true; }
-            if (args.length == 1 && "close".equalsIgnoreCase(args[0])) { shops.close(); ok(sender, "All showroom doors closed."); return true; }
-            if (args.length == 1 && "open".equalsIgnoreCase(args[0])) { shops.open(); ok(sender, "All showroom doors opened."); return true; }
+            if (args.length == 1 && "close".equalsIgnoreCase(args[0])) { shops.close(); synchronizeModes(); ok(sender, "All showroom doors closed."); return true; }
+            if (args.length == 1 && "open".equalsIgnoreCase(args[0])) { shops.open(); synchronizeModes(); ok(sender, "All showroom doors opened; edit mode disabled."); return true; }
             if (args.length == 1 && "list".equalsIgnoreCase(args[0])) { list(sender); return true; }
             bad(sender, "Unknown or incomplete command. Use /" + label + " help.");
-        } catch (RuntimeException exception) { bad(sender, exception.getMessage()); }
+        } catch (Exception exception) { bad(sender, "Operation failed: " + exception.getMessage()); }
         return true;
+    }
+
+    private void synchronizeModes() {
+        org.bukkit.plugin.Plugin plugin = org.bukkit.Bukkit.getPluginManager().getPlugin("VoxelFurnitureShop");
+        if (plugin instanceof VoxelFurnitureShop) ((VoxelFurnitureShop) plugin).synchronizeGameModes();
     }
 
     private ShopCuboid selection(Player player) {
@@ -106,6 +127,8 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
     private static String counts(String prefix, LayoutSnapshot value) { return prefix + ": " + value.blocks().size() + " blocks, " + value.furniture().size() + " furniture."; }
     private static void help(CommandSender s) {
         s.sendMessage(ChatColor.GOLD + "VoxelFurnitureShop commands");
+        s.sendMessage(ChatColor.YELLOW + "/vfs reload" + ChatColor.GRAY + " - safely reload config.yml without resetting shops");
+        s.sendMessage(ChatColor.YELLOW + "/vfs tooltip debug" + ChatColor.GRAY + " - diagnose focused furniture tooltip");
         s.sendMessage(ChatColor.YELLOW + "/vfs pos1|pos2" + ChatColor.GRAY + " - select blocks under your crosshair");
         s.sendMessage(ChatColor.YELLOW + "/vfs shop create <region>" + ChatColor.GRAY + " - create a dynamic display region");
         s.sendMessage(ChatColor.YELLOW + "/vfs variant save|update|remove|apply <region> <setup>");
@@ -122,7 +145,8 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
     private static String join(List<String> values) { return values.isEmpty() ? "none" : String.join(", ", values); }
 
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1) return match(args[0], Arrays.asList("help", "pos1", "pos2", "shop", "variant", "door", "furniture", "exit", "rotate", "close", "open", "edit", "list"));
+        if (args.length == 1) return match(args[0], Arrays.asList("help", "reload", "tooltip", "pos1", "pos2", "shop", "variant", "door", "furniture", "exit", "rotate", "close", "open", "edit", "list"));
+        if (args.length == 2 && "tooltip".equalsIgnoreCase(args[0])) return match(args[1], Collections.singletonList("debug"));
         if (args.length == 2 && "shop".equalsIgnoreCase(args[0])) return match(args[1], Collections.singletonList("create"));
         if (args.length == 2 && "variant".equalsIgnoreCase(args[0])) return match(args[1], Arrays.asList("save", "update", "remove", "apply", "clear", "require", "unrequire"));
         if (args.length == 2 && "door".equalsIgnoreCase(args[0])) return match(args[1], Collections.singletonList("save"));

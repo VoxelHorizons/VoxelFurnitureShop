@@ -4,10 +4,16 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ShopInteractionPolicyTest {
-    @Test public void onlyActivePermittedEditorsStayDuringShopClosure() {
-        assertFalse(ShopService.shouldEvacuate(true, true));
-        assertTrue(ShopService.shouldEvacuate(true, false));
-        assertFalse(ShopService.shouldEvacuate(false, false));
+    @Test public void editClosureExemptsOnlyActivePermittedEditors() {
+        assertFalse(ShopService.shouldEvacuate(true, true, true));
+        assertTrue(ShopService.shouldEvacuate(true, false, true));
+        assertFalse(ShopService.shouldEvacuate(false, false, true));
+    }
+
+    @Test public void normalClosureAlwaysEvacuatesEvenEditors() {
+        assertTrue(ShopService.shouldEvacuate(true, true, false));
+        assertTrue(ShopService.shouldEvacuate(true, false, false));
+        assertFalse(ShopService.shouldEvacuate(false, true, false));
     }
 
     @Test public void controlledDoorsAndCurtainsNeverAllowClicks() {

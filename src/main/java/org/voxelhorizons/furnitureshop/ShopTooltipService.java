@@ -2,6 +2,7 @@ package org.voxelhorizons.furnitureshop;
 
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.voxelhorizons.VoxelCore;
@@ -28,15 +29,27 @@ public final class ShopTooltipService {
     private final Map<UUID, UUID> displayed = new HashMap<UUID, UUID>();
     private final double distance;
     private final String variant;
-    private final List<String> lore;
+    private final String title;
+    private final String availableLine;
+    private final String unavailableLine;
+    private final String saleLine;
+    private final String notForSaleLine;
 
     public ShopTooltipService(JavaPlugin plugin, ShopService shops) {
+        this(plugin, shops, plugin.getConfig());
+    }
+
+    /** Build from an already parsed config so invalid reloads never replace the live renderer. */
+    public ShopTooltipService(JavaPlugin plugin, ShopService shops, FileConfiguration config) {
         this.plugin = plugin;
         this.shops = shops;
-        this.distance = plugin.getConfig().getDouble("tooltip.max-distance", 5.0D);
-        this.variant = plugin.getConfig().getString("tooltip.tooltip", "default");
-        this.lore = new ArrayList<String>(plugin.getConfig().getStringList("tooltip.lore"));
-        if (lore.size() > 3) throw new IllegalArgumentException("tooltip.lore supports at most 3 lines");
+        this.distance = config.getDouble("tooltip.max-distance", 5.0D);
+        this.variant = config.getString("tooltip.tooltip", "default");
+        this.title = config.getString("tooltip.title", "&f<furniture>");
+        this.availableLine = config.getString("tooltip.available-line", "&6<furniture_value> &f:shop_coin:");
+        this.unavailableLine = config.getString("tooltip.unavailable-line", "&6Price unavailable");
+        this.saleLine = config.getString("tooltip.sale-line", "&f:shop_mouse: &7Click to Buy");
+        this.notForSaleLine = config.getString("tooltip.not-for-sale-line", "&f:shop_mouse: &7Not for sale");
     }
 
     public void tick() {
@@ -51,15 +64,11 @@ public final class ShopTooltipService {
                 clear(player); continue;
             }
             OptionalDouble value = furniture.value(target);
-            if (!value.isPresent()) { clear(player); continue; } // No price means not for sale.
-            List<String> lines = new ArrayList<String>(lore);
-            while (lines.size() < 3) lines.add("");
+            // Tooltip visibility is independent from commerce metadata; missing price never hides an active display.
             String name = furniture.displayName(target);
-            String price = price(value.getAsDouble());
-            for (int i = 0; i < 3; i++) {
-                lines.set(i, lines.get(i).replace("<furniture>", name)
-                        .replace("<furniture_value>", price));
-            }
+            String price = value.isPresent() ? price(value.getAsDouble()) : "";
+            List<String> lines = renderLines(title, availableLine, unavailableLine,
+                    saleLine, notForSaleLine, name, price, value.isPresent());
             try {
                 VoxelCore.getInstance().getTooltipRenderer().show(player, variant,
                         lines.get(0), lines.get(1), lines.get(2), 12);
@@ -70,6 +79,23 @@ public final class ShopTooltipService {
                 return; // Do not log the same invalid font each player each tick.
             }
         }
+    }
+
+    /**
+     * Compose three complete lines selected from configured fields. Each string
+     * is independent, so custom wording is never scanned or rewritten.
+     */
+    static List<String> renderLines(String title, String availableLine, String unavailableLine,
+                                    String saleLine, String notForSaleLine,
+                                    String furnitureName, String value, boolean priced) {
+        List<String> result = new ArrayList<String>(3);
+        for (String template : new String[]{title,
+                priced ? availableLine : unavailableLine,
+                priced ? saleLine : notForSaleLine}) {
+            result.add(template.replace("<furniture>", furnitureName)
+                    .replace("<furniture_value>", value));
+        }
+        return result;
     }
 
     public void clear(Player player) {
@@ -95,10 +121,13 @@ public final class ShopTooltipService {
             Optional<FurnitureDefinition> definition = furniture.definition(instance);
             if (!definition.isPresent()) continue;
             FurnitureDefinition shape = definition.get();
-            double width = Math.max(0.3D, shape.width());
-            double h = Math.max(0.3D, shape.height());
-            double cx = loc.getX() + shape.hitboxOffsetX();
-            double cz = loc.getZ() + shape.hitboxOffsetZ();
+            // Hitbox is frequently much smaller than the visual model. Use an expanded
+            // volume around the rotated hitbox so looking at visible edges still targets it.
+            double width = Math.max(1.0D, shape.width() * Math.max(shape.scaleX(), shape.scaleZ()));
+            double h = Math.max(1.5D, shape.height() * shape.scaleY());
+            double yaw = Math.toRadians(instance.yaw());
+            double cx = loc.getX() + shape.hitboxOffsetX() * Math.cos(yaw) - shape.hitboxOffsetZ() * Math.sin(yaw);
+            double cz = loc.getZ() + shape.hitboxOffsetX() * Math.sin(yaw) + shape.hitboxOffsetZ() * Math.cos(yaw);
             double ymin = loc.getY() + shape.hitboxOffsetY();
             double t = rayBox(ox, oy, oz, facing.getX(), facing.getY(), facing.getZ(),
                     cx - width / 2, ymin, cz - width / 2,
@@ -106,6 +135,26 @@ public final class ShopTooltipService {
             if (t >= 0 && t < closest) { selected = instance; closest = t; }
         }
         return selected;
+    }
+
+    public String diagnostics(Player player) {
+        LayoutService furniture = shops.layouts();
+        int total = 0, eligible = 0, priced = 0;
+        for (FurnitureInstance instance : furniture.placedFurniture()) {
+            if (instance.location().getWorld() != player.getWorld()) continue;
+            total++;
+            if (!shops.isActiveVariantFurniture(instance)) continue;
+            eligible++;
+            if (furniture.value(instance).isPresent()) priced++;
+        }
+        FurnitureInstance selected = target(player, furniture);
+        String selection = selected == null ? "none" :
+                selected.definitionId() + ", worth=" + (furniture.value(selected).isPresent()
+                ? price(furniture.value(selected).getAsDouble()) : "unset");
+        return "enabled=" + plugin.getConfig().getBoolean("tooltip.enabled", false)
+                + ", shopOpen=" + shops.isOpen() + ", editor=" + shops.canEdit(player)
+                + ", tracked=" + total + ", activeVariant=" + eligible
+                + ", priced=" + priced + ", target=" + selection;
     }
 
     /** Slab ray/AABB intersection, no newer Paper-only ray tracing API required. */
