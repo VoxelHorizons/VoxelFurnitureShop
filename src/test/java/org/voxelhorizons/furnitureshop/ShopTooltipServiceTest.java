@@ -5,23 +5,20 @@ import static org.junit.Assert.*;
 
 public class ShopTooltipServiceTest {
     @Test public void pricedFurnitureUsesNormalSecondLineAndSaleThirdLine() {
-        java.util.List<String> lore = java.util.Arrays.asList("&f<furniture>", "&6<furniture_value> :shop_coin:");
-        java.util.List<String> result = ShopTooltipService.renderLore(lore, "Oak Bench", "250",
-                true, "&cUnavailable", "&aBuy now", "&cNot for sale");
+        java.util.List<String> result = ShopTooltipService.renderLines("&f<furniture>", "&6<furniture_value> :shop_coin:",
+                "&cUnavailable", "&aBuy now", "&cNot for sale", "Oak Bench", "250", true);
         assertEquals(java.util.Arrays.asList("&fOak Bench", "&6250 :shop_coin:", "&aBuy now"), result);
     }
 
     @Test public void unpricedFurnitureUsesEntirelySeparateSecondAndThirdLines() {
-        java.util.List<String> lore = java.util.Arrays.asList("&f<furniture>", "&6<furniture_value> :shop_coin:");
-        java.util.List<String> result = ShopTooltipService.renderLore(lore, "Oak Bench", "",
-                false, "&eNo listed price", "&aPurchase item", "&cDisplay only");
+        java.util.List<String> result = ShopTooltipService.renderLines("&f<furniture>", "&6<furniture_value> :shop_coin:",
+                "&eNo listed price", "&aPurchase item", "&cDisplay only", "Oak Bench", "", false);
         assertEquals(java.util.Arrays.asList("&fOak Bench", "&eNo listed price", "&cDisplay only"), result);
     }
 
     @Test public void customSaleWordingIsNeverSearchedOrReplaced() {
-        java.util.List<String> result = ShopTooltipService.renderLore(
-                java.util.Arrays.asList("<furniture>", "Click to Buy"),
-                "Click to Buy", "", false, "Unavailable", "Sale prompt", "Not purchasable");
+        java.util.List<String> result = ShopTooltipService.renderLines("<furniture>", "Click to Buy", "Unavailable",
+                "Sale prompt", "Not purchasable", "Click to Buy", "", false);
         assertEquals(java.util.Arrays.asList("Click to Buy", "Unavailable", "Not purchasable"), result);
     }
 
