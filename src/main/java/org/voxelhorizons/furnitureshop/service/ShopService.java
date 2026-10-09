@@ -30,6 +30,7 @@ public final class ShopService {
     private final Set<UUID> editors = new LinkedHashSet<UUID>();
     private final Random random = new Random();
     private boolean rotating;
+    private boolean showroomOpen = true;
 
     public ShopService(JavaPlugin plugin, ShopRepository store, SnapshotRepository snapshots, LayoutService layouts) {
         this.plugin = plugin; this.store = store; this.snapshots = snapshots; this.layouts = layouts;
@@ -41,6 +42,19 @@ public final class ShopService {
 
     public ShowroomDefinition showroom() { return showroom; }
     public Map<String, ShopCuboid> regions() { return showroom.regions(); }
+    public LayoutService layouts() { return layouts; }
+    public boolean isOpen() { return showroomOpen; }
+    public boolean editing() { return !editors.isEmpty(); }
+    public boolean isActiveVariantFurniture(org.voxelhorizons.furniture.model.FurnitureInstance instance) {
+        if (instance == null || !showroomOpen) return false;
+        Location location = instance.location();
+        if (insideAny(location, showroom.furnitureGroups().values())
+                || insideAny(location, showroom.doors().values())) return false;
+        for (Map.Entry<String, ShopCuboid> entry : showroom.regions().entrySet()) {
+            if (showroom.activeVariants().containsKey(entry.getKey()) && entry.getValue().contains(location)) return true;
+        }
+        return false;
+    }
     public ShopCuboid region(String id) { return showroom.regions().get(id); }
     public Map<String, ShopCuboid> doors() { return showroom.doors(); }
     public Map<String, ShopCuboid> furnitureGroups() { return showroom.furnitureGroups(); }
@@ -129,6 +143,10 @@ public final class ShopService {
     }
     public boolean toggleEditor(Player player, Boolean value) {
         boolean enabled = value == null ? !isEditor(player) : value.booleanValue();
+        if (enabled && !player.hasPermission("voxelfurnitureshop.edit")) {
+            throw new IllegalStateException("You do not have showroom edit permission.");
+        }
+        if (enabled && rotating) throw new IllegalStateException("Wait until the current rotation finishes.");
         if (enabled) editors.add(player.getUniqueId()); else editors.remove(player.getUniqueId());
         return enabled;
     }
@@ -161,7 +179,7 @@ public final class ShopService {
     /** Shop fixtures are owned by VoxelFurnitureShop, not by individual players. */
     public static boolean blocksFixtureInteraction(boolean shopArea, boolean fixtureArea,
                                                     boolean hasInventory, boolean animated) {
-        return shopArea && !hasInventory && (fixtureArea || animated);
+        return shopArea;
     }
 
     public static boolean shouldEvacuate(boolean inside, boolean permittedEditor) {
@@ -181,15 +199,17 @@ public final class ShopService {
     }
 
     public void checkDayChanges() {
+        if (editing() || rotating) return;
         World world = showroomWorld();
         if (world == null) return;
         long day = world.getFullTime() / 24000L;
         if (showroom.lastDay() < 0L) { showroom.lastDay(day); save(); return; }
-        if (day > showroom.lastDay()) { showroom.lastDay(day); save(); rotate(); }
+        if (day > showroom.lastDay()) { rotate(); showroom.lastDay(day); save(); }
     }
 
     /** Closes, redraws, and reopens the one physical showroom as a single transaction. */
     public void rotate() {
+        if (editing()) throw new IllegalStateException("Rotation is paused while showroom edit mode is active.");
         if (rotating) throw new IllegalStateException("Showroom rotation is already running.");
         rotating = true;
         try { close(); }
@@ -212,6 +232,7 @@ public final class ShopService {
     }
 
     public void close() {
+        showroomOpen = false;
         Location exit = showroom.exit();
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
         for (Player player : new ArrayList<Player>(exit.getWorld().getPlayers()))
@@ -220,6 +241,7 @@ public final class ShopService {
         applyDoors("closed");
     }
     public void open() {
+        showroomOpen = true;
         setFurnitureAnimations(false);
         applyDoors("open");
     }
@@ -287,5 +309,9 @@ public final class ShopService {
     private static void requireId(String id) {
         if (id == null || !id.matches("[a-z0-9_-]+")) throw new IllegalArgumentException("Identifiers use lowercase letters, numbers, _ and -");
     }
+    public void removeEditor(Player player) {
+        if (player != null) editors.remove(player.getUniqueId());
+    }
+
     public void save() { store.save(showroom); }
 }
