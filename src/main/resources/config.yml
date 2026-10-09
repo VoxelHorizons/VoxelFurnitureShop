@@ -14,9 +14,11 @@ tooltip:
   # Fixtures, curtains and shared doors are excluded.
   # Furniture without worth metadata still displays its name (but is not for sale).
   unpriced-label: 'Price unavailable'
+  buy-label: 'Click to Buy'
+  not-for-sale-label: 'Not for sale'
   max-distance: 5.0
   check-interval-ticks: 5
   lore:
   - "&f<furniture>"
   - "&6<furniture_value> &f:shop_coin:"
-  - "&f:shop_mouse: &7Click to Buy"
+  - "&f:shop_mouse: &7<furniture_action>"
