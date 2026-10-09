@@ -272,6 +272,8 @@ public final class ShopService {
         applyDoors("closed");
     }
     public void open() {
+        // Reopening concludes editing for everybody: visitors must not retain Creative.
+        editors.clear();
         showroomOpen = true;
         setFurnitureAnimations(false);
         applyDoors("open");
