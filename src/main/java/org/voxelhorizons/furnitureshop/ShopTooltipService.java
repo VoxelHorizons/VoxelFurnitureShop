@@ -31,6 +31,8 @@ public final class ShopTooltipService {
     private final String variant;
     private final List<String> lore;
     private final String unavailablePrice;
+    private final String buyLabel;
+    private final String notForSaleLabel;
 
     public ShopTooltipService(JavaPlugin plugin, ShopService shops) {
         this(plugin, shops, plugin.getConfig());
@@ -44,6 +46,8 @@ public final class ShopTooltipService {
         this.variant = config.getString("tooltip.tooltip", "default");
         this.lore = new ArrayList<String>(config.getStringList("tooltip.lore"));
         this.unavailablePrice = config.getString("tooltip.unpriced-label", "Price unavailable");
+        this.buyLabel = config.getString("tooltip.buy-label", "Click to Buy");
+        this.notForSaleLabel = config.getString("tooltip.not-for-sale-label", "Not for sale");
         if (lore.size() > 3) throw new IllegalArgumentException("tooltip.lore supports at most 3 lines");
     }
 
@@ -60,15 +64,9 @@ public final class ShopTooltipService {
             }
             OptionalDouble value = furniture.value(target);
             // Tooltip visibility is independent from commerce metadata; missing price never hides an active display.
-            List<String> lines = new ArrayList<String>(lore);
-            while (lines.size() < 3) lines.add("");
             String name = furniture.displayName(target);
             String price = value.isPresent() ? price(value.getAsDouble()) : unavailablePrice;
-            for (int i = 0; i < 3; i++) {
-                String rendered = lines.get(i).replace("<furniture>", name).replace("<furniture_value>", price);
-                if (!value.isPresent()) rendered = rendered.replace("Click to Buy", "Not for sale");
-                lines.set(i, rendered);
-            }
+            List<String> lines = renderLore(lore, name, price, value.isPresent(), buyLabel, notForSaleLabel);
             try {
                 VoxelCore.getInstance().getTooltipRenderer().show(player, variant,
                         lines.get(0), lines.get(1), lines.get(2), 12);
@@ -79,6 +77,31 @@ public final class ShopTooltipService {
                 return; // Do not log the same invalid font each player each tick.
             }
         }
+    }
+
+    /**
+     * Resolve player-visible text from a fully configurable template.
+     * The <furniture_action> placeholder works for both priced and unpriced items.
+     * Old templates containing literal "Click to Buy" still replace that phrase on
+     * unpriced furniture for backwards compatibility, even without the placeholder.
+     */
+    static List<String> renderLore(List<String> template, String furnitureName, String value,
+                                   boolean priced, String buyLabel, String notForSaleLabel) {
+        List<String> lines = new ArrayList<String>(template);
+        while (lines.size() < 3) lines.add("");
+        String action = priced ? buyLabel : notForSaleLabel;
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            boolean hasActionToken = line.contains("<furniture_action>");
+            String rendered = line.replace("<furniture>", furnitureName)
+                    .replace("<furniture_value>", value)
+                    .replace("<furniture_action>", action);
+            if (!priced && !hasActionToken) {
+                rendered = rendered.replace("Click to Buy", notForSaleLabel);
+            }
+            lines.set(i, rendered);
+        }
+        return lines;
     }
 
     public void clear(Player player) {
