@@ -42,9 +42,16 @@ Only instances within a region with an **active variant** can display a tooltip.
 
 ## Adventure/edit mode and rotation
 
-Shop-controlled areas force Adventure mode. Leaving returns a normal visitor to Survival; players previously in Spectator remain Spectators. Edit mode requires `voxelfurnitureshop.edit`. While edit mode is enabled, the daily rotation and manual `/vfs rotate` are paused. **An authorized editor in an active edit session stays in Creative even when moving inside a shop region**; the movement watcher uses the edit-state override instead of forcing Adventure. `/vfs edit on` applies Creative immediately, including when the shop is still open, rather than waiting for the movement sync. Closing the shop teleports visitors to the configured shared exit while permitted editors remain and receive Creative mode. Reopening **ends all active edit sessions** and immediately returns editors inside to Adventure; disabling editing in a closed shop evacuates the editor. Quitting or disabling the plugin restores the player's previous game mode.
+Shop regions force Adventure mode for ordinary visitors. Authorized editors using `/vfs edit on` stay in Creative while they move and build inside the shop.
 
-Use `/vfs edit off` to relinquish Creative; regular visitors remain in Adventure. The mode changes made by `/vfs edit`, `/vfs open`, and `/vfs close` take effect immediately, with periodic synchronization as a safety net.
+- **First editor enables editing:** the existing shop close routine shuts doors and activates closing animations, but evacuates **only visitors and players without active edit permission**. Authorized active editors remain inside. Daily and manual rotations pause.
+- **Additional editors join:** the showroom remains closed, and active permitted editors also stay inside in Creative.
+- **One editor disables editing:** if another editor remains, the showroom stays closed and the departing editor is evacuated to the shared exit (if still inside).
+- **Last editor disables editing:** if editing originally closed the showroom, the normal open routine reopens it and resumes rotation. Players still inside return to Adventure.
+- **Normal `/vfs close`, including rotation closures:** all players are evacuated, **even editors**. Normal closure ends edit sessions. A shop that was already manually closed before editing stays closed when editing ends.
+- **`/vfs open`:** opens the showroom and ends all edit sessions. Players inside return to Adventure.
+
+Edit state changes synchronize game modes immediately rather than waiting for the next movement check. The shared exit is configured with `/vfs exit`. If an editor disconnects during editing, the shop stays closed until an admin explicitly reopens it, avoiding accidental loss of unfinished variant work.
 
 The cuboid regions defined with `/vfs shop create`, `/vfs door save`, and `/vfs furniture save` define the protected/Adventure space, not the surrounding whole building unless those cuboids cover it.
 
