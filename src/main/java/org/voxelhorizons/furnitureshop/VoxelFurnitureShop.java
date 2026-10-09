@@ -24,6 +24,10 @@ public final class VoxelFurnitureShop extends JavaPlugin {
     private BukkitTask tooltipTask;
     private BukkitTask rotationTask;
 
+    public void synchronizeGameModes() {
+        if (modes != null) modes.synchronize();
+    }
+
     public String tooltipDiagnostics(org.bukkit.entity.Player player) {
         return tooltips == null ? "Tooltips are disabled or not initialized (tooltip.enabled is false)." : tooltips.diagnostics(player);
     }
