@@ -109,7 +109,9 @@ public final class ShopService {
         if (!snapshots.hasVariant(regionId, variant))
             throw new IllegalArgumentException("Variant does not exist; use variant save: " + regionId + "/" + variant);
         LayoutSnapshot snapshot = layouts.capture(region, showroom.furnitureGroups().values());
-        snapshots.saveVariant(regionId, variant, snapshot); return snapshot;
+        snapshots.saveVariant(regionId, variant, snapshot);
+        activeSnapshotCache.remove(regionId + "/" + variant);
+        return snapshot;
     }
     public void removeVariant(String regionId, String variant) {
         requireId(variant); requiredRegion(regionId);
