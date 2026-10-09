@@ -199,10 +199,15 @@ public final class ShopService {
     }
 
     public void checkDayChanges() {
-        if (editing() || rotating) return;
+        if (rotating) return;
         World world = showroomWorld();
         if (world == null) return;
         long day = world.getFullTime() / 24000L;
+        // Consume day changes during editing without replacing any unfinished builds.
+        if (editing()) {
+            if (showroom.lastDay() != day) { showroom.lastDay(day); save(); }
+            return;
+        }
         if (showroom.lastDay() < 0L) { showroom.lastDay(day); save(); return; }
         if (day > showroom.lastDay()) { rotate(); showroom.lastDay(day); save(); }
     }
@@ -236,7 +241,7 @@ public final class ShopService {
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
         showroomOpen = false;
         for (Player player : new ArrayList<Player>(exit.getWorld().getPlayers()))
-            if (shouldEvacuate(insideAnyRegion(player.getLocation()), canEdit(player))) player.teleport(exit);
+            if (shouldEvacuate(at(player.getLocation()).isPresent(), canEdit(player))) player.teleport(exit);
         setFurnitureAnimations(true);
         applyDoors("closed");
     }
