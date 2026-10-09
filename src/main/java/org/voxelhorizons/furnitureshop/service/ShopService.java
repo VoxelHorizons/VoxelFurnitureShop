@@ -181,7 +181,7 @@ public final class ShopService {
             editors.add(player.getUniqueId());
             // First editor closes the same doors and animations as a normal closure,
             // but leaves permitted, active editors inside to work.
-            if (firstEditor) {
+            if (firstEditor && showroomOpen) {
                 try { closeForEditing(); }
                 catch (RuntimeException exception) {
                     editors.remove(player.getUniqueId());
