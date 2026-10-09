@@ -52,7 +52,9 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
             if ("exit".equalsIgnoreCase(args[0]) && args.length == 1) { shops.setExit(player(sender).getLocation()); ok(sender, "Updated the shared evacuation exit."); return true; }
             if ("edit".equalsIgnoreCase(args[0])) {
                 Player player = player(sender); Boolean requested = args.length < 2 ? null : Boolean.valueOf("on".equalsIgnoreCase(args[1]));
-                ok(sender, "Shop editing " + (shops.toggleEditor(player, requested) ? "enabled" : "disabled") + "."); return true;
+                boolean editing = shops.toggleEditor(player, requested);
+                synchronizeModes();
+                ok(sender, "Shop editing " + (editing ? "enabled" : "disabled") + "."); return true;
             }
             if ("shop".equalsIgnoreCase(args[0]) && args.length == 3 && "create".equalsIgnoreCase(args[1])) {
                 shops.createRegion(args[2], selection(player(sender))); ok(sender, "Created dynamic shop region " + args[2] + "."); return true;
@@ -91,12 +93,17 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
                 ok(sender, "Removed the " + args[4] + " requirement from " + args[2] + "/" + args[3] + "."); return true;
             }
             if (args.length == 1 && "rotate".equalsIgnoreCase(args[0])) { shops.rotate(); ok(sender, "Full showroom rotation started."); return true; }
-            if (args.length == 1 && "close".equalsIgnoreCase(args[0])) { shops.close(); ok(sender, "All showroom doors closed."); return true; }
-            if (args.length == 1 && "open".equalsIgnoreCase(args[0])) { shops.open(); ok(sender, "All showroom doors opened."); return true; }
+            if (args.length == 1 && "close".equalsIgnoreCase(args[0])) { shops.close(); synchronizeModes(); ok(sender, "All showroom doors closed."); return true; }
+            if (args.length == 1 && "open".equalsIgnoreCase(args[0])) { shops.open(); synchronizeModes(); ok(sender, "All showroom doors opened; edit mode disabled."); return true; }
             if (args.length == 1 && "list".equalsIgnoreCase(args[0])) { list(sender); return true; }
             bad(sender, "Unknown or incomplete command. Use /" + label + " help.");
         } catch (Exception exception) { bad(sender, "Operation failed: " + exception.getMessage()); }
         return true;
+    }
+
+    private void synchronizeModes() {
+        org.bukkit.plugin.Plugin plugin = org.bukkit.Bukkit.getPluginManager().getPlugin("VoxelFurnitureShop");
+        if (plugin instanceof VoxelFurnitureShop) ((VoxelFurnitureShop) plugin).synchronizeGameModes();
     }
 
     private ShopCuboid selection(Player player) {
