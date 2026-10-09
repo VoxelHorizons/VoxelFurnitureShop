@@ -32,6 +32,8 @@ public final class ShopService {
     private final Map<String, LayoutSnapshot> activeSnapshotCache = new LinkedHashMap<String, LayoutSnapshot>();
     private boolean rotating;
     private boolean showroomOpen = true;
+    /** True only when editing initiated the closure; protects unfinished designs. */
+    private boolean closedForEditing;
 
     public ShopService(JavaPlugin plugin, ShopRepository store, SnapshotRepository snapshots, LayoutService layouts) {
         this.plugin = plugin; this.store = store; this.snapshots = snapshots; this.layouts = layouts;
@@ -169,15 +171,37 @@ public final class ShopService {
     }
     public boolean toggleEditor(Player player, Boolean value) {
         boolean enabled = value == null ? !isEditor(player) : value.booleanValue();
-        if (enabled && !player.hasPermission("voxelfurnitureshop.edit")) {
-            throw new IllegalStateException("You do not have showroom edit permission.");
+        if (enabled) {
+            if (!player.hasPermission("voxelfurnitureshop.edit")) {
+                throw new IllegalStateException("You do not have showroom edit permission.");
+            }
+            if (rotating) throw new IllegalStateException("Wait until the current rotation finishes.");
+            if (isEditor(player)) return true;
+            boolean firstEditor = !editing();
+            editors.add(player.getUniqueId());
+            // First editor closes the same doors and animations as a normal closure,
+            // but leaves permitted, active editors inside to work.
+            if (firstEditor) {
+                try { closeForEditing(); }
+                catch (RuntimeException exception) {
+                    editors.remove(player.getUniqueId());
+                    throw exception;
+                }
+            }
+            return true;
         }
-        if (enabled && rotating) throw new IllegalStateException("Wait until the current rotation finishes.");
-        if (enabled) editors.add(player.getUniqueId()); else editors.remove(player.getUniqueId());
-        if (!enabled && !showroomOpen && insideAnyRegion(player.getLocation()) && showroom.exit() != null) {
+
+        if (!isEditor(player)) return false;
+        editors.remove(player.getUniqueId());
+        if (!editing() && closedForEditing) {
+            // Reopen only after the LAST editor ends editing; never abandon a
+            // second editor's work or apply a queued daily rotation.
+            open();
+        } else if (!showroomOpen && at(player.getLocation()).isPresent() && showroom.exit() != null) {
+            // Other editors are still working: this player is now a visitor.
             player.teleport(showroom.exit());
         }
-        return enabled;
+        return false;
     }
     /** All shop furniture interactions, including inventories and animations, are disabled. */
     public boolean isControlledFixture(org.voxelhorizons.furniture.model.FurnitureInstance instance) {
@@ -208,8 +232,10 @@ public final class ShopService {
         return shopArea;
     }
 
-    public static boolean shouldEvacuate(boolean inside, boolean permittedEditor) {
-        return inside && !permittedEditor;
+    public static boolean shouldEvacuate(boolean inside, boolean permittedEditor, boolean editingClosure) {
+        // Only a closure specifically requested by edit mode exempts active,
+        // permitted editors. Normal /vfs close and rotation evacuate EVERYONE.
+        return inside && (!editingClosure || !permittedEditor);
     }
 
     private static boolean insideAny(Location location, Iterable<ShopCuboid> regions) {
@@ -230,7 +256,7 @@ public final class ShopService {
         if (world == null) return;
         long day = world.getFullTime() / 24000L;
         // Consume day changes during editing without replacing any unfinished builds.
-        if (editing()) {
+        if (editing() || closedForEditing) {
             if (showroom.lastDay() != day) { showroom.lastDay(day); save(); }
             return;
         }
@@ -240,7 +266,8 @@ public final class ShopService {
 
     /** Closes, redraws, and reopens the one physical showroom as a single transaction. */
     public void rotate() {
-        if (editing()) throw new IllegalStateException("Rotation is paused while showroom edit mode is active.");
+        if (editing() || closedForEditing)
+            throw new IllegalStateException("Rotation is paused while showroom editing or its protected closure is active.");
         if (rotating) throw new IllegalStateException("Showroom rotation is already running.");
         rotating = true;
         try { close(); }
@@ -262,18 +289,30 @@ public final class ShopService {
         }, Math.max(0L, restockDelay));
     }
 
-    public void close() {
+    /** Manual and rotation closure: evacuates ALL players, even existing editors. */
+    public void close() { closeInternal(false); }
+
+    /** Shared closure mechanics with an editor-only evacuation exception. */
+    private void closeForEditing() { closeInternal(true); }
+
+    private void closeInternal(boolean editingClosure) {
         Location exit = showroom.exit();
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
+        if (!editingClosure) editors.clear();
         showroomOpen = false;
-        for (Player player : new ArrayList<Player>(exit.getWorld().getPlayers()))
-            if (shouldEvacuate(at(player.getLocation()).isPresent(), canEdit(player))) player.teleport(exit);
+        closedForEditing = editingClosure;
+        for (Player player : new ArrayList<Player>(exit.getWorld().getPlayers())) {
+            if (shouldEvacuate(at(player.getLocation()).isPresent(), canEdit(player), editingClosure)) {
+                player.teleport(exit);
+            }
+        }
         setFurnitureAnimations(true);
         applyDoors("closed");
     }
     public void open() {
-        // Reopening concludes editing for everybody: visitors must not retain Creative.
+        // Reopening ends all edit sessions and allows rotation to resume normally.
         editors.clear();
+        closedForEditing = false;
         showroomOpen = true;
         setFurnitureAnimations(false);
         applyDoors("open");
