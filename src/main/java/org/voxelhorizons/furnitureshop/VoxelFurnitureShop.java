@@ -15,6 +15,9 @@ public final class VoxelFurnitureShop extends JavaPlugin {
     private ShopService shops;
     private ShopGameModeListener modes;
     private ShopTooltipService tooltips;
+    public String tooltipDiagnostics(org.bukkit.entity.Player player) {
+        return tooltips == null ? "Tooltips are disabled or not initialized (tooltip.enabled is false)." : tooltips.diagnostics(player);
+    }
 
     @Override public void onEnable() {
         saveDefaultConfig();
