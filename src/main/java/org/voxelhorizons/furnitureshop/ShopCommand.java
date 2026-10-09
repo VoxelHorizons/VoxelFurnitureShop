@@ -33,6 +33,13 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
         if (!sender.hasPermission("voxelfurnitureshop.admin")) { bad(sender, "You do not have permission."); return true; }
         try {
             if (args.length == 0 || "help".equalsIgnoreCase(args[0])) { help(sender); return true; }
+            if ("reload".equalsIgnoreCase(args[0]) && args.length == 1) {
+                org.bukkit.plugin.Plugin current = org.bukkit.Bukkit.getPluginManager().getPlugin("VoxelFurnitureShop");
+                if (!(current instanceof VoxelFurnitureShop)) throw new IllegalStateException("Shop plugin is unavailable.");
+                ((VoxelFurnitureShop) current).reloadShopConfig();
+                ok(sender, "Configuration reloaded. Tooltip settings and scheduled rotation checks updated.");
+                return true;
+            }
             if ("tooltip".equalsIgnoreCase(args[0]) && args.length == 2 && "debug".equalsIgnoreCase(args[1])) {
                 org.bukkit.plugin.Plugin current = org.bukkit.Bukkit.getPluginManager().getPlugin("VoxelFurnitureShop");
                 if (current instanceof VoxelFurnitureShop) {
@@ -88,7 +95,7 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
             if (args.length == 1 && "open".equalsIgnoreCase(args[0])) { shops.open(); ok(sender, "All showroom doors opened."); return true; }
             if (args.length == 1 && "list".equalsIgnoreCase(args[0])) { list(sender); return true; }
             bad(sender, "Unknown or incomplete command. Use /" + label + " help.");
-        } catch (RuntimeException exception) { bad(sender, exception.getMessage()); }
+        } catch (Exception exception) { bad(sender, "Operation failed: " + exception.getMessage()); }
         return true;
     }
 
@@ -113,6 +120,7 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
     private static String counts(String prefix, LayoutSnapshot value) { return prefix + ": " + value.blocks().size() + " blocks, " + value.furniture().size() + " furniture."; }
     private static void help(CommandSender s) {
         s.sendMessage(ChatColor.GOLD + "VoxelFurnitureShop commands");
+        s.sendMessage(ChatColor.YELLOW + "/vfs reload" + ChatColor.GRAY + " - safely reload config.yml without resetting shops");
         s.sendMessage(ChatColor.YELLOW + "/vfs tooltip debug" + ChatColor.GRAY + " - diagnose focused furniture tooltip");
         s.sendMessage(ChatColor.YELLOW + "/vfs pos1|pos2" + ChatColor.GRAY + " - select blocks under your crosshair");
         s.sendMessage(ChatColor.YELLOW + "/vfs shop create <region>" + ChatColor.GRAY + " - create a dynamic display region");
@@ -130,7 +138,7 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
     private static String join(List<String> values) { return values.isEmpty() ? "none" : String.join(", ", values); }
 
     @Override public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1) return match(args[0], Arrays.asList("help", "tooltip", "pos1", "pos2", "shop", "variant", "door", "furniture", "exit", "rotate", "close", "open", "edit", "list"));
+        if (args.length == 1) return match(args[0], Arrays.asList("help", "reload", "tooltip", "pos1", "pos2", "shop", "variant", "door", "furniture", "exit", "rotate", "close", "open", "edit", "list"));
         if (args.length == 2 && "tooltip".equalsIgnoreCase(args[0])) return match(args[1], Collections.singletonList("debug"));
         if (args.length == 2 && "shop".equalsIgnoreCase(args[0])) return match(args[1], Collections.singletonList("create"));
         if (args.length == 2 && "variant".equalsIgnoreCase(args[0])) return match(args[1], Arrays.asList("save", "update", "remove", "apply", "clear", "require", "unrequire"));
