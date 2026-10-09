@@ -20,6 +20,8 @@ import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.voxelhorizons.furniture.event.FurnitureInteractEvent;
 import org.bukkit.event.block.Action;
 import org.voxelhorizons.furniture.event.FurnitureBreakEvent;
@@ -81,6 +83,16 @@ public final class ProtectionListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void controlledEntityInteraction(PlayerInteractEntityEvent event) {
+        if (shops.isControlledFixture(event.getRightClicked().getUniqueId())) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void protectFurnitureDamage(EntityDamageByEntityEvent event) {
+        if (shops.isControlledFixture(event.getEntity().getUniqueId())) event.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    public void preventArmorStandManipulation(PlayerArmorStandManipulateEvent event) {
         if (shops.isControlledFixture(event.getRightClicked().getUniqueId())) event.setCancelled(true);
     }
 
