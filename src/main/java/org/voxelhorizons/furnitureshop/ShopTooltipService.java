@@ -29,7 +29,8 @@ public final class ShopTooltipService {
     private final Map<UUID, UUID> displayed = new HashMap<UUID, UUID>();
     private final double distance;
     private final String variant;
-    private final List<String> lore;
+    private final String title;
+    private final String availableLine;
     private final String unavailableLine;
     private final String saleLine;
     private final String notForSaleLine;
@@ -44,14 +45,8 @@ public final class ShopTooltipService {
         this.shops = shops;
         this.distance = config.getDouble("tooltip.max-distance", 5.0D);
         this.variant = config.getString("tooltip.tooltip", "default");
-        List<String> configuredLore = config.getStringList("tooltip.lore");
-        // Older installations had three lore entries. Ignore the obsolete third
-        // entry rather than disabling the entire plugin during an upgrade.
-        if (configuredLore.size() > 2) {
-            plugin.getLogger().warning("tooltip.lore now uses only the first two lines. "
-                    + "Set tooltip.sale-line and tooltip.not-for-sale-line for the third line.");
-        }
-        this.lore = new ArrayList<String>(configuredLore.subList(0, Math.min(2, configuredLore.size())));
+        this.title = config.getString("tooltip.title", "&f<furniture>");
+        this.availableLine = config.getString("tooltip.available-line", "&6<furniture_value> &f:shop_coin:");
         this.unavailableLine = config.getString("tooltip.unavailable-line", "&6Price unavailable");
         this.saleLine = config.getString("tooltip.sale-line", "&f:shop_mouse: &7Click to Buy");
         this.notForSaleLine = config.getString("tooltip.not-for-sale-line", "&f:shop_mouse: &7Not for sale");
@@ -72,8 +67,8 @@ public final class ShopTooltipService {
             // Tooltip visibility is independent from commerce metadata; missing price never hides an active display.
             String name = furniture.displayName(target);
             String price = value.isPresent() ? price(value.getAsDouble()) : "";
-            List<String> lines = renderLore(lore, name, price, value.isPresent(),
-                    unavailableLine, saleLine, notForSaleLine);
+            List<String> lines = renderLines(title, availableLine, unavailableLine,
+                    saleLine, notForSaleLine, name, price, value.isPresent());
             try {
                 VoxelCore.getInstance().getTooltipRenderer().show(player, variant,
                         lines.get(0), lines.get(1), lines.get(2), 12);
@@ -87,24 +82,20 @@ public final class ShopTooltipService {
     }
 
     /**
-     * The first line is always the furniture name. The second line is either the
-     * configured priced lore or a fully independent unavailable-price line, and
-     * the third line is a fully independent sale/not-for-sale line.
-     * Never guess action text or replace phrases from authored lore.
+     * Compose three complete lines selected from configured fields. Each string
+     * is independent, so custom wording is never scanned or rewritten.
      */
-    static List<String> renderLore(List<String> template, String furnitureName, String value,
-                                   boolean priced, String unavailableLine, String saleLine,
-                                   String notForSaleLine) {
-        String first = template.isEmpty() ? "" : template.get(0);
-        String second = priced
-                ? (template.size() > 1 ? template.get(1) : "")
-                : unavailableLine;
-        String third = priced ? saleLine : notForSaleLine;
-        List<String> rendered = new ArrayList<String>(3);
-        for (String line : new String[]{first, second, third}) {
-            rendered.add(line.replace("<furniture>", furnitureName).replace("<furniture_value>", value));
+    static List<String> renderLines(String title, String availableLine, String unavailableLine,
+                                    String saleLine, String notForSaleLine,
+                                    String furnitureName, String value, boolean priced) {
+        List<String> result = new ArrayList<String>(3);
+        for (String template : new String[]{title,
+                priced ? availableLine : unavailableLine,
+                priced ? saleLine : notForSaleLine}) {
+            result.add(template.replace("<furniture>", furnitureName)
+                    .replace("<furniture_value>", value));
         }
-        return rendered;
+        return result;
     }
 
     public void clear(Player player) {
