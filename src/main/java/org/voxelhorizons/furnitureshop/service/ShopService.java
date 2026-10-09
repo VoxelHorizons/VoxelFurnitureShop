@@ -148,12 +148,12 @@ public final class ShopService {
         }
         if (enabled && rotating) throw new IllegalStateException("Wait until the current rotation finishes.");
         if (enabled) editors.add(player.getUniqueId()); else editors.remove(player.getUniqueId());
+        if (!enabled && !showroomOpen && insideAnyRegion(player.getLocation()) && showroom.exit() != null) {
+            player.teleport(showroom.exit());
+        }
         return enabled;
     }
-    /**
-     * Shop-controlled fixtures must not respond to any player's clicks, including editors.
-     * Inventory furniture remains usable as a showroom demonstration.
-     */
+    /** All shop furniture interactions, including inventories and animations, are disabled. */
     public boolean isControlledFixture(org.voxelhorizons.furniture.model.FurnitureInstance instance) {
         if (instance == null) return false;
         Location location = instance.location();
@@ -232,9 +232,9 @@ public final class ShopService {
     }
 
     public void close() {
-        showroomOpen = false;
         Location exit = showroom.exit();
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
+        showroomOpen = false;
         for (Player player : new ArrayList<Player>(exit.getWorld().getPlayers()))
             if (shouldEvacuate(insideAnyRegion(player.getLocation()), canEdit(player))) player.teleport(exit);
         setFurnitureAnimations(true);
