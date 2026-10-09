@@ -30,9 +30,9 @@ public final class ShopTooltipService {
     private final double distance;
     private final String variant;
     private final List<String> lore;
-    private final String unavailablePrice;
-    private final String buyLabel;
-    private final String notForSaleLabel;
+    private final String unavailableLine;
+    private final String saleLine;
+    private final String notForSaleLine;
 
     public ShopTooltipService(JavaPlugin plugin, ShopService shops) {
         this(plugin, shops, plugin.getConfig());
@@ -44,11 +44,17 @@ public final class ShopTooltipService {
         this.shops = shops;
         this.distance = config.getDouble("tooltip.max-distance", 5.0D);
         this.variant = config.getString("tooltip.tooltip", "default");
-        this.lore = new ArrayList<String>(config.getStringList("tooltip.lore"));
-        this.unavailablePrice = config.getString("tooltip.unpriced-label", "Price unavailable");
-        this.buyLabel = config.getString("tooltip.buy-label", "Click to Buy");
-        this.notForSaleLabel = config.getString("tooltip.not-for-sale-label", "Not for sale");
-        if (lore.size() > 3) throw new IllegalArgumentException("tooltip.lore supports at most 3 lines");
+        List<String> configuredLore = config.getStringList("tooltip.lore");
+        // Older installations had three lore entries. Ignore the obsolete third
+        // entry rather than disabling the entire plugin during an upgrade.
+        if (configuredLore.size() > 2) {
+            plugin.getLogger().warning("tooltip.lore now uses only the first two lines. "
+                    + "Set tooltip.sale-line and tooltip.not-for-sale-line for the third line.");
+        }
+        this.lore = new ArrayList<String>(configuredLore.subList(0, Math.min(2, configuredLore.size())));
+        this.unavailableLine = config.getString("tooltip.unavailable-line", "&6Price unavailable");
+        this.saleLine = config.getString("tooltip.sale-line", "&f:shop_mouse: &7Click to Buy");
+        this.notForSaleLine = config.getString("tooltip.not-for-sale-line", "&f:shop_mouse: &7Not for sale");
     }
 
     public void tick() {
@@ -65,8 +71,9 @@ public final class ShopTooltipService {
             OptionalDouble value = furniture.value(target);
             // Tooltip visibility is independent from commerce metadata; missing price never hides an active display.
             String name = furniture.displayName(target);
-            String price = value.isPresent() ? price(value.getAsDouble()) : unavailablePrice;
-            List<String> lines = renderLore(lore, name, price, value.isPresent(), buyLabel, notForSaleLabel);
+            String price = value.isPresent() ? price(value.getAsDouble()) : "";
+            List<String> lines = renderLore(lore, name, price, value.isPresent(),
+                    unavailableLine, saleLine, notForSaleLine);
             try {
                 VoxelCore.getInstance().getTooltipRenderer().show(player, variant,
                         lines.get(0), lines.get(1), lines.get(2), 12);
@@ -80,28 +87,24 @@ public final class ShopTooltipService {
     }
 
     /**
-     * Resolve player-visible text from a fully configurable template.
-     * The <furniture_action> placeholder works for both priced and unpriced items.
-     * Old templates containing literal "Click to Buy" still replace that phrase on
-     * unpriced furniture for backwards compatibility, even without the placeholder.
+     * The first line is always the furniture name. The second line is either the
+     * configured priced lore or a fully independent unavailable-price line, and
+     * the third line is a fully independent sale/not-for-sale line.
+     * Never guess action text or replace phrases from authored lore.
      */
     static List<String> renderLore(List<String> template, String furnitureName, String value,
-                                   boolean priced, String buyLabel, String notForSaleLabel) {
-        List<String> lines = new ArrayList<String>(template);
-        while (lines.size() < 3) lines.add("");
-        String action = priced ? buyLabel : notForSaleLabel;
-        for (int i = 0; i < lines.size(); i++) {
-            String line = lines.get(i);
-            boolean hasActionToken = line.contains("<furniture_action>");
-            String rendered = line.replace("<furniture>", furnitureName)
-                    .replace("<furniture_value>", value)
-                    .replace("<furniture_action>", action);
-            if (!priced && !hasActionToken) {
-                rendered = rendered.replace("Click to Buy", notForSaleLabel);
-            }
-            lines.set(i, rendered);
+                                   boolean priced, String unavailableLine, String saleLine,
+                                   String notForSaleLine) {
+        String first = template.isEmpty() ? "" : template.get(0);
+        String second = priced
+                ? (template.size() > 1 ? template.get(1) : "")
+                : unavailableLine;
+        String third = priced ? saleLine : notForSaleLine;
+        List<String> rendered = new ArrayList<String>(3);
+        for (String line : new String[]{first, second, third}) {
+            rendered.add(line.replace("<furniture>", furnitureName).replace("<furniture_value>", value));
         }
-        return lines;
+        return rendered;
     }
 
     public void clear(Player player) {
