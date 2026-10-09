@@ -4,7 +4,7 @@ Install a compatible VoxelCore (with the named UI tooltip renderer) and VoxelFur
 
 ## Pricing source
 
-Furniture items can define `properties.furniture.value: 250` (or `worth: 250`). The metadata is inherited through the existing content inheritance system. Items without a value are **not for sale** and do not show a purchase tooltip. No currency is withdrawn or inventory item granted yet; purchasing will be implemented separately. This is display-only pricing; Vault provides a balance service and does not itself register item worth with Essentials or ShopGUI+.
+Furniture items can define `properties.furniture.value: 250` (or `worth: 250`). The metadata is inherited through the existing content inheritance system. Items without a value are **not for sale**, but still show a tooltip containing the configured `tooltip.unpriced-label` and a `Not for sale` prompt. No currency is withdrawn or inventory item granted yet; purchasing will be implemented separately. This is display-only pricing; Vault provides a balance service and does not itself register item worth with Essentials or ShopGUI+.
 
 ## Config
 
@@ -21,6 +21,8 @@ tooltip:
 ```
 
 The configured `tooltip` is the named VoxelCore tooltip style. `lore` accepts up to three lines (one per VoxelCore text row). `<furniture>` inserts the item's configured display name; `<furniture_value>` inserts the current furniture worth. Existing UI font symbols such as `:shop_coin:` are processed through VoxelCore's text placeholder service. The text is refreshed while the player points at the furniture.
+
+Run `/vfs tooltip debug` while looking at furniture to inspect whether tooltips are enabled, how many active variant instances are recognized, how many have a price, and which target is selected. This is useful for missing prices and narrow hitbox problems.
 
 Only instances within a region with an **active variant** can display a tooltip. Persistent furniture, shared doors and fixtures are excluded even if inside a region. The shop always intercepts furniture interactions inside controlled areas; inventory UIs and click animations no longer trigger. Actual purchase processing is intentionally **not** active yet despite the configured "Click to Buy" prompt.
 
