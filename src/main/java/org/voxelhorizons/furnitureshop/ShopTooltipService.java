@@ -29,6 +29,7 @@ public final class ShopTooltipService {
     private final double distance;
     private final String variant;
     private final List<String> lore;
+    private final String unavailablePrice;
 
     public ShopTooltipService(JavaPlugin plugin, ShopService shops) {
         this.plugin = plugin;
@@ -36,6 +37,7 @@ public final class ShopTooltipService {
         this.distance = plugin.getConfig().getDouble("tooltip.max-distance", 5.0D);
         this.variant = plugin.getConfig().getString("tooltip.tooltip", "default");
         this.lore = new ArrayList<String>(plugin.getConfig().getStringList("tooltip.lore"));
+        this.unavailablePrice = plugin.getConfig().getString("tooltip.unpriced-label", "Price unavailable");
         if (lore.size() > 3) throw new IllegalArgumentException("tooltip.lore supports at most 3 lines");
     }
 
@@ -51,14 +53,15 @@ public final class ShopTooltipService {
                 clear(player); continue;
             }
             OptionalDouble value = furniture.value(target);
-            if (!value.isPresent()) { clear(player); continue; } // No price means not for sale.
+            // Tooltip visibility is independent from commerce metadata; missing price never hides an active display.
             List<String> lines = new ArrayList<String>(lore);
             while (lines.size() < 3) lines.add("");
             String name = furniture.displayName(target);
-            String price = price(value.getAsDouble());
+            String price = value.isPresent() ? price(value.getAsDouble()) : unavailablePrice;
             for (int i = 0; i < 3; i++) {
-                lines.set(i, lines.get(i).replace("<furniture>", name)
-                        .replace("<furniture_value>", price));
+                String rendered = lines.get(i).replace("<furniture>", name).replace("<furniture_value>", price);
+                if (!value.isPresent()) rendered = rendered.replace("Click to Buy", "Not for sale");
+                lines.set(i, rendered);
             }
             try {
                 VoxelCore.getInstance().getTooltipRenderer().show(player, variant,
@@ -95,10 +98,13 @@ public final class ShopTooltipService {
             Optional<FurnitureDefinition> definition = furniture.definition(instance);
             if (!definition.isPresent()) continue;
             FurnitureDefinition shape = definition.get();
-            double width = Math.max(0.3D, shape.width());
-            double h = Math.max(0.3D, shape.height());
-            double cx = loc.getX() + shape.hitboxOffsetX();
-            double cz = loc.getZ() + shape.hitboxOffsetZ();
+            // Hitbox is frequently much smaller than the visual model. Use an expanded
+            // volume around the rotated hitbox so looking at visible edges still targets it.
+            double width = Math.max(1.0D, shape.width() * Math.max(shape.scaleX(), shape.scaleZ()));
+            double h = Math.max(1.5D, shape.height() * shape.scaleY());
+            double yaw = Math.toRadians(instance.yaw());
+            double cx = loc.getX() + shape.hitboxOffsetX() * Math.cos(yaw) - shape.hitboxOffsetZ() * Math.sin(yaw);
+            double cz = loc.getZ() + shape.hitboxOffsetX() * Math.sin(yaw) + shape.hitboxOffsetZ() * Math.cos(yaw);
             double ymin = loc.getY() + shape.hitboxOffsetY();
             double t = rayBox(ox, oy, oz, facing.getX(), facing.getY(), facing.getZ(),
                     cx - width / 2, ymin, cz - width / 2,
@@ -106,6 +112,26 @@ public final class ShopTooltipService {
             if (t >= 0 && t < closest) { selected = instance; closest = t; }
         }
         return selected;
+    }
+
+    public String diagnostics(Player player) {
+        LayoutService furniture = shops.layouts();
+        int total = 0, eligible = 0, priced = 0;
+        for (FurnitureInstance instance : furniture.placedFurniture()) {
+            if (instance.location().getWorld() != player.getWorld()) continue;
+            total++;
+            if (!shops.isActiveVariantFurniture(instance)) continue;
+            eligible++;
+            if (furniture.value(instance).isPresent()) priced++;
+        }
+        FurnitureInstance selected = target(player, furniture);
+        String selection = selected == null ? "none" :
+                selected.definitionId() + ", worth=" + (furniture.value(selected).isPresent()
+                ? price(furniture.value(selected).getAsDouble()) : "unset");
+        return "enabled=" + plugin.getConfig().getBoolean("tooltip.enabled", false)
+                + ", shopOpen=" + shops.isOpen() + ", editor=" + shops.canEdit(player)
+                + ", tracked=" + total + ", activeVariant=" + eligible
+                + ", priced=" + priced + ", target=" + selection;
     }
 
     /** Slab ray/AABB intersection, no newer Paper-only ray tracing API required. */
