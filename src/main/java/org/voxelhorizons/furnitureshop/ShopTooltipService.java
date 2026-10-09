@@ -2,6 +2,7 @@ package org.voxelhorizons.furnitureshop;
 
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.voxelhorizons.VoxelCore;
@@ -32,12 +33,17 @@ public final class ShopTooltipService {
     private final String unavailablePrice;
 
     public ShopTooltipService(JavaPlugin plugin, ShopService shops) {
+        this(plugin, shops, plugin.getConfig());
+    }
+
+    /** Build from an already parsed config so invalid reloads never replace the live renderer. */
+    public ShopTooltipService(JavaPlugin plugin, ShopService shops, FileConfiguration config) {
         this.plugin = plugin;
         this.shops = shops;
-        this.distance = plugin.getConfig().getDouble("tooltip.max-distance", 5.0D);
-        this.variant = plugin.getConfig().getString("tooltip.tooltip", "default");
-        this.lore = new ArrayList<String>(plugin.getConfig().getStringList("tooltip.lore"));
-        this.unavailablePrice = plugin.getConfig().getString("tooltip.unpriced-label", "Price unavailable");
+        this.distance = config.getDouble("tooltip.max-distance", 5.0D);
+        this.variant = config.getString("tooltip.tooltip", "default");
+        this.lore = new ArrayList<String>(config.getStringList("tooltip.lore"));
+        this.unavailablePrice = config.getString("tooltip.unpriced-label", "Price unavailable");
         if (lore.size() > 3) throw new IllegalArgumentException("tooltip.lore supports at most 3 lines");
     }
 
