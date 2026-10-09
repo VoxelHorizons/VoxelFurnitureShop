@@ -22,6 +22,8 @@ tooltip:
 
 The configured `tooltip` is the named VoxelCore tooltip style. `lore` accepts up to three lines (one per VoxelCore text row). `<furniture>` inserts the item's configured display name; `<furniture_value>` inserts the current furniture worth. Existing UI font symbols such as `:shop_coin:` are processed through VoxelCore's text placeholder service. The text is refreshed while the player points at the furniture.
 
+Use `/vfs reload` after editing the plugin's `config.yml`. It validates the file, reloads tooltip style/lore, targeting distance, visibility, pricing fallback and scan interval, and restarts the rotation-check task if enabled. This does not overwrite saved shops or variant layouts, close the showroom, or interrupt an editor. Existing rotations in progress continue using the newly loaded delay values at their next step. Invalid YAML or invalid tooltip settings are rejected without replacing the running tooltip tasks. This command requires `voxelfurnitureshop.admin` and works from the console.
+
 Run `/vfs tooltip debug` while looking at furniture to inspect whether tooltips are enabled, how many active variant instances are recognized, how many have a price, and which target is selected. This is useful for missing prices and narrow hitbox problems.
 
 Only instances within a region with an **active variant** can display a tooltip. Persistent furniture, shared doors and fixtures are excluded even if inside a region. The shop always intercepts furniture interactions inside controlled areas; inventory UIs and click animations no longer trigger. Actual purchase processing is intentionally **not** active yet despite the configured "Click to Buy" prompt.
