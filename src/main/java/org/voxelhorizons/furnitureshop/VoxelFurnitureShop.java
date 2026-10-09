@@ -69,6 +69,7 @@ public final class VoxelFurnitureShop extends JavaPlugin {
         File file = new File(getDataFolder(), "config.yml");
         YamlConfiguration candidate = new YamlConfiguration();
         candidate.load(file); // Throws on malformed YAML rather than silently loading an empty config.
+        candidate.setDefaults(getConfig().getDefaults()); // Mirror Bukkit's bundled defaults.
         validateRuntimeConfig(candidate);
         ShopTooltipService replacement = candidate.getBoolean("tooltip.enabled", false)
                 ? new ShopTooltipService(this, shops, candidate) : null;
@@ -84,7 +85,7 @@ public final class VoxelFurnitureShop extends JavaPlugin {
         switchTasks(config, replacement);
     }
 
-    private static void validateRuntimeConfig(FileConfiguration config) {
+    static void validateRuntimeConfig(FileConfiguration config) {
         if (config.getLong("rotation.check-interval-ticks", 100L) < 1L
                 || config.getLong("tooltip.check-interval-ticks", 5L) < 1L) {
             throw new IllegalArgumentException("Rotation and tooltip check intervals must be positive.");
