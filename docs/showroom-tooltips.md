@@ -14,17 +14,25 @@ tooltip:
   tooltip: default
   max-distance: 5.0
   check-interval-ticks: 5
-  lore:
-  - "&f<furniture>"
-  - "&6<furniture_value> &f:shop_coin:"
+
+  title: "&f<furniture>"
+  available-line: "&6<furniture_value> &f:shop_coin:"
   unavailable-line: "&6Price unavailable &f:shop_coin:"
   sale-line: "&f:shop_mouse: &7Click to Buy"
   not-for-sale-line: "&f:shop_mouse: &7Not for sale"
 ```
 
-The renderer outputs exactly three lines. `lore[0]` is the furniture name, always. When the furniture has a configured value, `lore[1]` renders the value and `sale-line` becomes the third line. When the value is missing, `unavailable-line` replaces the second line and `not-for-sale-line` becomes the third line. Each is a **complete, independently configurable line**; no purchase wording is searched for or replaced. `<furniture>` and `<furniture_value>` are the only special furniture tokens; the latter resolves to an empty string when the value is absent. Color codes and custom VoxelCore UI glyphs such as `:shop_coin:` and `:shop_mouse:` are preserved for VoxelCore processing.
+The renderer outputs exactly three lines, composed from five independently editable fields:
 
-Existing installations with a third entry in `tooltip.lore` will have that entry ignored with a warning. Move its sale and not-for-sale wording to the new `sale-line` and `not-for-sale-line` keys; the old `unpriced-label`, `buy-label` and `not-for-sale-label` settings are superseded. Use `/vfs reload` to apply edits without a server restart.
+- Line 1 always uses `title`.
+- Line 2 uses `available-line` if the furniture has a configured numeric worth, otherwise `unavailable-line`.
+- Line 3 uses `sale-line` if worth exists, otherwise `not-for-sale-line`.
+
+`<furniture>` inserts the configured display name and `<furniture_value>` inserts the numeric value (empty when unset). Every line may contain color codes and VoxelCore UI font placeholders such as `:shop_coin:` and `:shop_mouse:`. All fields are complete string templates; no text matching/replacement for phrases like "Click to Buy" occurs.
+
+**Migration:** The previous `tooltip.lore` list has been superseded by `tooltip.title` and `tooltip.available-line`. Move any first/second lines you've customized into those fields. Older keys such as `unpriced-label`, `buy-label` and `not-for-sale-label` are no longer used. Apply changes with `/vfs reload`.
+
+Use `/vfs reload` to apply edits without a server restart.
 
 Use `/vfs reload` after editing the plugin's `config.yml`. It validates the file, reloads tooltip style/lore, targeting distance, visibility, pricing fallback and scan interval, and restarts the rotation-check task if enabled. This does not overwrite saved shops or variant layouts, close the showroom, or interrupt an editor. Existing rotations in progress continue using the newly loaded delay values at their next step. Invalid YAML or invalid tooltip settings are rejected without replacing the running tooltip tasks. This command requires `voxelfurnitureshop.admin` and works from the console.
 
