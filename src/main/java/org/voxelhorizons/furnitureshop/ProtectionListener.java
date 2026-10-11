@@ -113,7 +113,9 @@ public final class ProtectionListener implements Listener {
                 && event.getHand() == org.bukkit.inventory.EquipmentSlot.HAND
                 && event.getItem() != null && event.getItem().getType().isBlock()) {
             // Permit vanilla block placement without activating the shop fixture.
-            event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+            // DENY on the clicked block also prevents placement on some server
+            // versions (SPIGOT-8118). Mark the held item as explicitly allowed;
+            // VoxelFurniture recognizes this without blocking vanilla placement.
             event.setUseItemInHand(org.bukkit.event.Event.Result.ALLOW);
             return;
         }
