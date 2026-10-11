@@ -109,6 +109,14 @@ public final class ProtectionListener implements Listener {
                 return;
             }
         }
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && bypass(player)
+                && event.getHand() == org.bukkit.inventory.EquipmentSlot.HAND
+                && event.getItem() != null && event.getItem().getType().isBlock()) {
+            // Permit vanilla block placement without activating the shop fixture.
+            event.setUseInteractedBlock(org.bukkit.event.Event.Result.DENY);
+            event.setUseItemInHand(org.bukkit.event.Event.Result.ALLOW);
+            return;
+        }
         if (shouldBlockControlledInteraction(bypass(player), event.getAction() == Action.LEFT_CLICK_BLOCK)) {
             event.setCancelled(true);
         }
