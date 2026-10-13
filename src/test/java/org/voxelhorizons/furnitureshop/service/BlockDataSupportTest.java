@@ -71,10 +71,23 @@ public final class BlockDataSupportTest {
             BlockDataSupport.restoreBlockState(block(calls), Material.STONE, 7, null, true);
             fail("Legacy-only orientation/data cannot be silently discarded");
         } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("legacy block data"));
+            assertTrue(expected.getMessage().contains("Legacy-only snapshot"));
         }
         assertEquals(0, calls.typeWrites.get());
         assertEquals(0, calls.legacyWrites.get());
+    }
+
+    @Test public void validatesLegacyOnlySnapshotsBeforeAnyWorldChanges() {
+        try {
+            BlockDataSupport.validateSnapshot("STONE", 7, null, true);
+            fail("Legacy-only snapshots must be refused before layout clear");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("Legacy-only snapshot"));
+        }
+        // Legacy 1.12 restores remain supported; modern default states remain supported.
+        BlockDataSupport.validateSnapshot("STONE", 7, null, false);
+        BlockDataSupport.validateSnapshot("STONE", 0, null, true);
+        BlockDataSupport.validateSnapshot("STONE", 7, "minecraft:stone", true);
     }
 
     @Test public void invalidModernBlockDataNeverFallsBackToCraftLegacy() {
