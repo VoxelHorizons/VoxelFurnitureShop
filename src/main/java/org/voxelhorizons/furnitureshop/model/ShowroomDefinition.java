@@ -15,6 +15,9 @@ public final class ShowroomDefinition {
     private final Map<String, String> activeVariants = new LinkedHashMap<String, String>();
     private final Map<String, Map<String, Map<String, String>>> requirements =
             new LinkedHashMap<String, Map<String, Map<String, String>>>();
+    /** Persistent physical showroom closure, distinct from transient online editor UUIDs. */
+    public enum ClosureState { OPEN, CLOSED, EDITING }
+    private ClosureState closureState = ClosureState.OPEN;
     private long lastDay = -1L;
 
     public Location exit() { return exit == null ? null : exit.clone(); }
@@ -61,6 +64,11 @@ public final class ShowroomDefinition {
         for (Map<String, Map<String, String>> sourceVariants : requirements.values())
             for (Map<String, String> values : sourceVariants.values())
                 if (variant.equals(values.get(region))) values.remove(region);
+    }
+    public ClosureState closureState() { return closureState; }
+    public void closureState(ClosureState state) {
+        if (state == null) throw new IllegalArgumentException("closure state cannot be null");
+        closureState = state;
     }
     public long lastDay() { return lastDay; }
     public void lastDay(long value) { lastDay = value; }

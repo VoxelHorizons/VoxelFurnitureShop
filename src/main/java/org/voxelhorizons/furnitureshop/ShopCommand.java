@@ -54,7 +54,9 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
                 Player player = player(sender); Boolean requested = args.length < 2 ? null : Boolean.valueOf("on".equalsIgnoreCase(args[1]));
                 boolean editing = shops.toggleEditor(player, requested);
                 synchronizeModes();
-                ok(sender, "Shop editing " + (editing ? "enabled" : "disabled") + "."); return true;
+                ok(sender, editing ? "Shop editing enabled."
+                        : shops.editing() ? "Your edit session ended; showroom remains protected for other editors."
+                        : "Shop editing disabled."); return true;
             }
             if ("shop".equalsIgnoreCase(args[0]) && args.length == 3 && "create".equalsIgnoreCase(args[1])) {
                 shops.createRegion(args[2], selection(player(sender))); ok(sender, "Created dynamic shop region " + args[2] + "."); return true;
@@ -121,7 +123,9 @@ public final class ShopCommand implements CommandExecutor, TabCompleter {
     private void list(CommandSender sender) {
         ok(sender, "Regions: " + join(new ArrayList<String>(shops.regions().keySet()))
                 + "; shared doors: " + join(new ArrayList<String>(shops.doors().keySet()))
-                + "; persistent furniture: " + join(new ArrayList<String>(shops.furnitureGroups().keySet())));
+                + "; persistent furniture: " + join(new ArrayList<String>(shops.furnitureGroups().keySet()))
+                + "; closure: " + shops.closureState()
+                + "; active editors: " + shops.activeEditorCount());
     }
     private static Player player(CommandSender sender) { if (!(sender instanceof Player)) throw new IllegalStateException("This command requires a player."); return (Player) sender; }
     private static String counts(String prefix, LayoutSnapshot value) { return prefix + ": " + value.blocks().size() + " blocks, " + value.furniture().size() + " furniture."; }
