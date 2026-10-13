@@ -32,6 +32,8 @@ public final class BlockDataSupportTest {
                             return null;
                         case "toString":
                             return "stubbed test block";
+                        case "getLocation":
+                            return null; // Only used in descriptive failure messages.
                         default:
                             throw new AssertionError("Unexpected call to " + method.getName());
                     }
