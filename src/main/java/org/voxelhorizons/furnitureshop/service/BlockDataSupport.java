@@ -51,6 +51,20 @@ final class BlockDataSupport {
         }
     }
 
+    /** Validate old snapshots before LayoutService.clear removes anything. */
+    static void validateSnapshot(String material, int legacyData, String serializedData) {
+        validateSnapshot(material, legacyData, serializedData, MODERN_BLOCK_DATA);
+    }
+
+    static void validateSnapshot(String material, int legacyData, String serializedData,
+                                 boolean modernBlockData) {
+        if (modernBlockData && (serializedData == null || serializedData.isEmpty()) && legacyData != 0) {
+            throw new IllegalArgumentException("Legacy-only snapshot for " + material
+                    + " contains block data " + legacyData
+                    + " without modern block_data; convert this snapshot before applying on modern Paper.");
+        }
+    }
+
     static void restore(Block block, String materialName, int legacyData, String serializedData) {
         restore(block, materialName, legacyData, serializedData, null, null);
     }
@@ -87,15 +101,11 @@ final class BlockDataSupport {
             return;
         }
 
+        validateSnapshot(material.name(), legacyData, serializedData, true);
         if (serializedData == null || serializedData.isEmpty()) {
             // Old 1.12-only snapshots cannot faithfully restore directions
             // and variants on modern Minecraft without a dedicated importer.
             // DataFixerUpper must not be triggered on the tick thread.
-            if (legacyData != 0) {
-                throw new IllegalArgumentException("Snapshot has only legacy block data ("
-                        + legacyData + ") for " + material
-                        + "; restore on a legacy server or convert the snapshot before applying on modern Paper.");
-            }
             // Default-state blocks and old snapshots with no state information.
             block.setType(material, false);
             return;
