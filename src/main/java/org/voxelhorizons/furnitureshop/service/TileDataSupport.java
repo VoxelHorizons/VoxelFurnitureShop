@@ -42,6 +42,7 @@ final class TileDataSupport {
             data.put("banner_patterns", new ArrayList<Pattern>(((Banner) state).getPatterns()));
         if (state instanceof Sign) captureSign((Sign)state, data);
         if (state instanceof CreatureSpawner) captureSpawner((CreatureSpawner)state, data);
+        captureAdditional(state, data);
 
         Map<String, String> sherds = captureSherds(state);
         if (sherds != null) data.put("decorated_pot_sherds", sherds);
@@ -115,6 +116,7 @@ final class TileDataSupport {
         }
         if (data.containsKey("sign")) restoreSign((Sign)state, map(data.get("sign")));
         if (data.containsKey("spawner")) restoreSpawner((CreatureSpawner)state, map(data.get("spawner")));
+        if (data.containsKey("extra")) restoreAdditional(state, map(data.get("extra")));
         if (data.containsKey("inventory")) {
             Object inventory = callOptional(state, "getSnapshotInventory");
             if (!(inventory instanceof Inventory) && state instanceof InventoryHolder)
@@ -166,6 +168,90 @@ final class TileDataSupport {
             throw new IllegalStateException("This server cannot restore decorated-pot patterns", error);
         } catch (ReflectiveOperationException error) {
             throw new IllegalStateException("Failed to restore pottery designs", error);
+        }
+    }
+
+    /**
+     * Additional Bukkit block-state fields that are stored in block entities,
+     * rather than in the directional BlockData string.
+     */
+    private static final String[][] NUMERIC = {
+            {"burn_time", "getBurnTime", "setBurnTime"},
+            {"cook_time", "getCookTime", "setCookTime"},
+            {"cook_time_total", "getCookTimeTotal", "setCookTimeTotal"},
+            {"brewing_time", "getBrewingTime", "setBrewingTime"},
+            {"fuel_level", "getFuelLevel", "setFuelLevel"},
+            {"lectern_page", "getPage", "setPage"}
+    };
+
+    private static void captureAdditional(Object state, Map<String,Object> data) {
+        Map<String,Object> extra = new LinkedHashMap<String,Object>();
+        for (String[] field : NUMERIC) {
+            Object value = callOptional(state, field[1]);
+            if (value instanceof Number) extra.put(field[0], value);
+        }
+        Object playing = callOptional(state, "getPlaying");
+        if (playing instanceof Material) extra.put("jukebox_playing", ((Material)playing).name());
+        Object record = callOptional(state, "getRecord");
+        if (record instanceof ItemStack) extra.put("jukebox_record", ((ItemStack)record).clone());
+        Object items = captureIndexedItems(state);
+        if (items != null) extra.put("campfire_items", items);
+        if (!extra.isEmpty()) data.put("extra", extra);
+    }
+
+    private static void restoreAdditional(Object state, Map<String,Object> extra) {
+        for (String[] field : NUMERIC) {
+            if (!extra.containsKey(field[0])) continue;
+            Number saved = (Number)extra.get(field[0]);
+            setNumeric(state, field[2], saved);
+        }
+        if (extra.containsKey("jukebox_record"))
+            callRequired(state, "setRecord", new Class<?>[]{ItemStack.class},
+                    ((ItemStack)extra.get("jukebox_record")).clone());
+        else if (extra.containsKey("jukebox_playing"))
+            callRequired(state, "setPlaying", new Class<?>[]{Material.class},
+                    Material.matchMaterial(String.valueOf(extra.get("jukebox_playing"))));
+        if (extra.containsKey("campfire_items"))
+            restoreIndexedItems(state, map(extra.get("campfire_items")));
+    }
+
+    private static void setNumeric(Object target, String method, Number value) {
+        for (Method candidate : target.getClass().getMethods()) {
+            if (!candidate.getName().equals(method) || candidate.getParameterTypes().length != 1) continue;
+            Class<?> type = candidate.getParameterTypes()[0];
+            Object converted;
+            if (type == short.class || type == Short.class) converted = Short.valueOf(value.shortValue());
+            else if (type == int.class || type == Integer.class) converted = Integer.valueOf(value.intValue());
+            else if (type == float.class || type == Float.class) converted = Float.valueOf(value.floatValue());
+            else if (type == double.class || type == Double.class) converted = Double.valueOf(value.doubleValue());
+            else continue;
+            callRequired(target, method, new Class<?>[]{type}, converted);
+            return;
+        }
+        throw new IllegalStateException("Cannot restore block-entity property " + method);
+    }
+
+    private static Object captureIndexedItems(Object state) {
+        // Campfires expose 4 slots but do not implement InventoryHolder.
+        Method getter;
+        try { getter = state.getClass().getMethod("getItem", int.class); }
+        catch (NoSuchMethodException ignored) { return null; }
+        Map<String,Object> slots = new LinkedHashMap<String,Object>();
+        for (int i=0; i<4; i++) {
+            ItemStack stack = (ItemStack)callRequired(state,"getItem",new Class<?>[]{int.class}, i);
+            if (stack != null && stack.getType() != Material.AIR)
+                slots.put(Integer.toString(i),stack.clone());
+        }
+        return slots;
+    }
+
+    private static void restoreIndexedItems(Object state, Map<String,Object> slots) {
+        for (Map.Entry<String,Object> entry : slots.entrySet()) {
+            int slot = Integer.parseInt(entry.getKey());
+            if (slot < 0 || slot > 3 || !(entry.getValue() instanceof ItemStack))
+                throw new IllegalArgumentException("Invalid campfire inventory slot " + entry.getKey());
+            callRequired(state,"setItem",new Class<?>[]{int.class,ItemStack.class},
+                    slot,((ItemStack)entry.getValue()).clone());
         }
     }
 
