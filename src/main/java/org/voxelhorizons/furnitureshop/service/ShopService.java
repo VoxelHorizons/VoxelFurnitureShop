@@ -57,6 +57,8 @@ public final class ShopService {
     public LayoutService layouts() { return layouts; }
     public boolean isOpen() { return showroomOpen; }
     public boolean editing() { return !editors.isEmpty(); }
+    public int activeEditorCount() { return editors.size(); }
+    public String closureState() { return showroom.closureState().name(); }
     /** Only furniture physically recorded in an active variant receives a shop tooltip. */
     public boolean isActiveVariantFurniture(org.voxelhorizons.furniture.model.FurnitureInstance instance) {
         if (instance == null || !showroomOpen) return false;
