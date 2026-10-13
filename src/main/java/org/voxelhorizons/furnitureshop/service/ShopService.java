@@ -192,7 +192,10 @@ public final class ShopService {
             editors.add(player.getUniqueId());
             // First editor closes the same doors and animations as a normal closure,
             // but leaves permitted, active editors inside to work.
-            if (firstEditor && showroomOpen) {
+            if (firstEditor && !closedForEditing) {
+                // A manually closed shop also needs to enter protected edit
+                // mode; otherwise "edit off" cannot know it should reopen.
+                // An already-recovered editing closure must not be applied twice.
                 try { closeForEditing(); }
                 catch (RuntimeException exception) {
                     editors.remove(player.getUniqueId());
