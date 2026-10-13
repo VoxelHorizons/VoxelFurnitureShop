@@ -14,6 +14,7 @@ import org.bukkit.inventory.ItemStack;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -156,7 +157,7 @@ final class TileDataSupport {
     static void restoreSherds(Object state, Map<String, String> sherds) {
         try {
             Class<?> side = Class.forName("org.bukkit.block.DecoratedPot$Side");
-            Method setter = state.getClass().getMethod("setSherd", side, Material.class);
+            Method setter = publicMethod(state.getClass(), "setSherd", side, Material.class);
             if (sherds.size() != 4) throw new IllegalArgumentException("Expected 4 pottery sherd sides");
             for (Map.Entry<String, String> entry : sherds.entrySet()) {
                 Object sideValue = Enum.valueOf((Class<? extends Enum>)side, entry.getKey());
@@ -234,7 +235,7 @@ final class TileDataSupport {
     private static Object captureIndexedItems(Object state) {
         // Campfires expose 4 slots but do not implement InventoryHolder.
         Method getter;
-        try { getter = state.getClass().getMethod("getItem", int.class); }
+        try { getter = publicMethod(state.getClass(), "getItem", int.class); }
         catch (NoSuchMethodException ignored) { return null; }
         Map<String,Object> slots = new LinkedHashMap<String,Object>();
         for (int i=0; i<4; i++) {
@@ -312,7 +313,7 @@ final class TileDataSupport {
         try {
             Class<?> type = Class.forName("org.bukkit.block.sign.Side");
             Object value = Enum.valueOf((Class<? extends Enum>)type, side);
-            return sign.getClass().getMethod("getSide", type).invoke(sign, value);
+            return publicMethod(sign.getClass(), "getSide", type).invoke(sign, value);
         } catch (ClassNotFoundException | NoSuchMethodException ignored) {
             return null;
         } catch (ReflectiveOperationException exception) {
@@ -372,15 +373,39 @@ final class TileDataSupport {
 
     static Object callOptional(Object target, String method) {
         if (target == null) return null;
-        try { return target.getClass().getMethod(method).invoke(target); }
+        try { return publicMethod(target.getClass(),method).invoke(target); }
         catch (NoSuchMethodException ignored) { return null; }
         catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Cannot capture tile field " + method, exception);
         }
     }
 
+    /** A private CraftBukkit implementation may implement a public API interface. */
+    private static Method publicMethod(Class<?> type, String name, Class<?>... types)
+            throws NoSuchMethodException {
+        for (Class<?> current=type; current!=null; current=current.getSuperclass()) {
+            for (Class<?> api : current.getInterfaces()) {
+                Method accessible=methodOnInterface(api,name,types);
+                if (accessible!=null) return accessible;
+            }
+        }
+        return type.getMethod(name,types);
+    }
+
+    private static Method methodOnInterface(Class<?> iface, String name, Class<?>... types) {
+        if (Modifier.isPublic(iface.getModifiers())) {
+            try {return iface.getMethod(name,types);}
+            catch (NoSuchMethodException ignored) {}
+        }
+        for (Class<?> parent : iface.getInterfaces()) {
+            Method result=methodOnInterface(parent,name,types);
+            if (result!=null) return result;
+        }
+        return null;
+    }
+
     private static Object callRequired(Object target, String method, Class<?>[] types, Object... args) {
-        try { return target.getClass().getMethod(method,types).invoke(target,args); }
+        try { return publicMethod(target.getClass(),method,types).invoke(target,args); }
         catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Cannot restore tile field " + method, exception);
         }
