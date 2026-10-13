@@ -31,16 +31,17 @@ public class TileDataSupportTest {
             assertEquals("BRICK",data.get(side.name()));
     }
 
+    public static final class IncompletePot {
+        public Map<Side,Material> getSherds() {
+            Map<Side,Material> out = new EnumMap<Side,Material>(Side.class);
+            out.put(Side.FRONT,Material.BRICK);
+            return out;
+        }
+    }
+
     @Test(expected=IllegalArgumentException.class)
     public void refusesIncompletePotteryShards() {
-        class InvalidPot {
-            public Map<Side,Material> getSherds() {
-                Map<Side,Material> out = new EnumMap<Side,Material>(Side.class);
-                out.put(Side.FRONT,Material.BRICK);
-                return out;
-            }
-        }
-        TileDataSupport.captureSherds(new InvalidPot());
+        TileDataSupport.captureSherds(new IncompletePot());
     }
 
     @Test public void ignoresNonPotBlockStates() {
