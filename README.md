@@ -35,7 +35,21 @@ Repeat with any identifiers required by the building:
 
 These identifiers are examples only. Existing regions previously created with `/vfs shop create` are automatically migrated to the new showroom structure without recreating their cuboids.
 
-Enable `/vfs edit on` while authoring inside protected regions, then disable it with `/vfs edit off` when finished. Players with `voxelfurnitureshop.edit` **and** active edit mode are not teleported to the evacuation exit when the shop closes or rotates, so editors can work inside the closed building. Other players are still evacuated.
+Enable `/vfs edit on` while authoring inside protected regions, then disable it with `/vfs edit off` when finished. Players with `voxelfurnitureshop.edit` **and** active edit mode are not teleported to the evacuation exit during editing closure, so editors can work inside the closed building. Other players are still evacuated.
+
+### Restart and disconnected-editor recovery
+
+A protected showroom editing closure is **not** the same as an online player's editor session. VoxelFurnitureShop now saves `showroom.closure_state: EDITING` in `shops.yml` and restores it after restarting the server. It stays closed and **automatic rotation stays paused** so unfinished in-world changes cannot be overwritten by a restart. Player UUID sessions are intentionally not persisted.
+
+- To **resume editing** after reconnect/restart, run `/vfs edit on`. This restores Creative for your session without unnecessarily closing the showroom a second time.
+- To **finish editing and reopen** the showroom, run `/vfs edit off`. This now works even if the last editor disconnected and the current session is no longer registered. It restores open door/animation states and unpauses rotations.
+- If someone else is still actively editing, `/vfs edit off` only ends *your* session; it does not expose their unfinished work.
+- `/vfs close` is a separate manual closure; `/vfs edit off` does **not** override a normal manual closure. Use `/vfs open` to reopen it.
+- `/vfs list` includes the current closure state and number of online editors for troubleshooting.
+
+Showroom state uses `OPEN`, `CLOSED`, or `EDITING` (schema 4, upgrading older `shops.yml` records automatically). The last day and variant selections remain unchanged; a restart during edit cannot trigger a queued rotation while still protected.
+
+**Upgrading from versions without saved closure state:** If a server was already restarted while on the old plugin, the former edit/close reason cannot be inferred from a schema-3 `shops.yml`. If the world still appears physically closed but `/vfs edit off` has no pending protected closure to release, use `/vfs open` once to reconcile its doors and furniture.
 
 ## Record display setups
 
