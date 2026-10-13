@@ -6,6 +6,10 @@ No region names are hardcoded. Every region is created in-game and persisted in 
 
 Snapshots preserve every block in a selected cuboid and each VoxelFurniture instance whose origin is inside it, including its exact fractional position and yaw. Furniture collision blocks are omitted from block snapshots and recreated by VoxelFurniture.
 
+**Custom player-head decorations:** Variant and door snapshots now preserve the skull block-entity player profile as well as the material and facing/rotation. The saved `skull_profile` entry contains the owner's UUID/name, exact base64 texture properties and signatures where available, and a portable skin URL fallback. Applying a snapshot restores the saved profile to the placed skull, so custom skins survive rotations and restarts. Snapshot schema `2` is backwards-compatible with schema `1` (head profiles omitted in older saves).
+
+**Existing head decorations:** Old snapshots already written without skull profiles cannot recover those skin textures. Re-place your custom heads while the showroom is in edit mode, then run `/vfs variant update <region> <variant>` for each affected setup and re-save any door-state snapshots. Always back up the `variants/` and `doors/` directories before re-recording. Avoid switching to an old affected variant until it has been rebuilt; applying the old snapshot overwrites the in-world head with its default skin.
+
 Persistent showroom furniture groups are separate from randomized variants. Furniture inside one of these groups is never captured into, removed by, or duplicated by variant snapshots. The group stays physically present while VoxelFurnitureShop forces its persistent `animation.use` state closed during restocking and back to normal when the showroom reopens.
 
 ## Requirements
