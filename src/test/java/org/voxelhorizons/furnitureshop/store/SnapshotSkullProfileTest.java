@@ -59,7 +59,7 @@ public class SnapshotSkullProfileTest {
         assertNull(restored.blocks().get(1).skullProfile());
         File file = new File(temp.getRoot(), "variants/showroom/custom_heads.yml");
         String yaml = new String(Files.readAllBytes(file.toPath()), "UTF-8");
-        assertTrue(yaml.contains("schema: 2"));
+        assertTrue(yaml.contains("schema: 3"));
         assertTrue(yaml.contains("skull_profile:"));
     }
 
