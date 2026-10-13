@@ -9,6 +9,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -29,6 +30,10 @@ final class SkullProfileSupport {
     private SkullProfileSupport() {}
 
     static Map<String, Object> capture(Block block) {
+        // A showroom may contain thousands of ordinary blocks. Only obtain a
+        // Bukkit BlockState for materials that could carry a skull profile.
+        String material = block.getType().name();
+        if (!material.contains("HEAD") && !material.contains("SKULL")) return null;
         BlockState state = block.getState();
         if (!(state instanceof Skull)) return null;
         Object profile = optional(state, "getProfile");           // Paper 1.21.9+ (26.2)
@@ -83,7 +88,7 @@ final class SkullProfileSupport {
     private static boolean restoreResolvable(BlockState state, Map<String, Object> data) {
         try {
             Class<?> type = Class.forName("io.papermc.paper.datacomponent.item.ResolvableProfile");
-            Method setter = state.getClass().getMethod("setProfile", type);
+            Method setter = Skull.class.getMethod("setProfile", type);
             Object builder = type.getMethod("resolvableProfile").invoke(null);
             Object uuid = uuid(data);
             if (uuid != null) invoke(builder, "uuid", UUID.class, uuid);
@@ -91,7 +96,9 @@ final class SkullProfileSupport {
             if (name != null) invoke(builder, "name", String.class, name);
             for (Map<String, String> property : propertiesForModern(data))
                 invoke(builder, "addProperty", paperPropertyType(), paperProperty(property));
-            setter.invoke(state, builder.getClass().getMethod("build").invoke(builder));
+            Class<?> builderType = Class.forName(
+                    "io.papermc.paper.datacomponent.item.ResolvableProfile$Builder");
+            setter.invoke(state, builderType.getMethod("build").invoke(builder));
             return true;
         } catch (ClassNotFoundException | NoSuchMethodException ignored) {
             return false;
@@ -103,7 +110,7 @@ final class SkullProfileSupport {
     private static boolean restorePaper(BlockState state, Map<String, Object> data) {
         try {
             Class<?> profileType = Class.forName("com.destroystokyo.paper.profile.PlayerProfile");
-            Method setter = state.getClass().getMethod("setPlayerProfile", profileType);
+            Method setter = Skull.class.getMethod("setPlayerProfile", profileType);
             UUID id = uuid(data);
             String name = string(data.get("name"));
             if (id == null && name == null) id = deterministicId(data);
@@ -135,7 +142,7 @@ final class SkullProfileSupport {
     private static boolean restoreBukkit(BlockState state, Map<String, Object> data) {
         try {
             Class<?> profileType = Class.forName("org.bukkit.profile.PlayerProfile");
-            Method setter = state.getClass().getMethod("setOwnerProfile", profileType);
+            Method setter = Skull.class.getMethod("setOwnerProfile", profileType);
             UUID id = uuid(data);
             String name = string(data.get("name"));
             if (id == null && name == null) id = deterministicId(data);
@@ -326,7 +333,7 @@ final class SkullProfileSupport {
 
     private static Object optional(Object target, String method) {
         try {
-            return target.getClass().getMethod(method).invoke(target);
+            return publicMethod(target.getClass(), method).invoke(target);
         } catch (NoSuchMethodException ignored) {
             return null;
         } catch (ReflectiveOperationException exception) {
@@ -336,7 +343,35 @@ final class SkullProfileSupport {
 
     private static void invoke(Object target, String method, Class<?> argumentType, Object value)
             throws ReflectiveOperationException {
-        target.getClass().getMethod(method, argumentType).invoke(target, value);
+        publicMethod(target.getClass(), method, argumentType).invoke(target, value);
+    }
+
+    /**
+     * Paper profile/builder implementations can be package-private. Invoke
+     * methods on their public API interfaces instead of private concrete
+     * classes (which would throw IllegalAccessException on Java 25).
+     */
+    private static Method publicMethod(Class<?> type, String method, Class<?>... args)
+            throws NoSuchMethodException {
+        for (Class<?> cursor = type; cursor != null; cursor = cursor.getSuperclass()) {
+            for (Class<?> api : cursor.getInterfaces()) {
+                Method exposed = findOnInterface(api, method, args);
+                if (exposed != null) return exposed;
+            }
+        }
+        return type.getMethod(method, args);
+    }
+
+    private static Method findOnInterface(Class<?> api, String method, Class<?>... args) {
+        if (Modifier.isPublic(api.getModifiers())) {
+            try { return api.getMethod(method, args); }
+            catch (NoSuchMethodException ignored) { }
+        }
+        for (Class<?> parent : api.getInterfaces()) {
+            Method exposed = findOnInterface(parent, method, args);
+            if (exposed != null) return exposed;
+        }
+        return null;
     }
 
     private static IllegalStateException failure(String context, ReflectiveOperationException error) {
