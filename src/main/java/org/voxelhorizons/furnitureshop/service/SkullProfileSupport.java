@@ -89,7 +89,7 @@ final class SkullProfileSupport {
             if (uuid != null) invoke(builder, "uuid", UUID.class, uuid);
             String name = string(data.get("name"));
             if (name != null) invoke(builder, "name", String.class, name);
-            for (Map<String, String> property : properties(data))
+            for (Map<String, String> property : propertiesForModern(data))
                 invoke(builder, "addProperty", paperPropertyType(), paperProperty(property));
             setter.invoke(state, builder.getClass().getMethod("build").invoke(builder));
             return true;
@@ -162,8 +162,28 @@ final class SkullProfileSupport {
         if (skinUrl == null) return;
         Object textures = optional(profile, "getTextures");
         if (textures == null) throw new IllegalStateException("No PlayerTextures API for custom skull skin");
-        invoke(textures, "setSkin", URL.class, new URL(skinUrl));
+        try {
+            invoke(textures, "setSkin", URL.class, new URL(skinUrl));
+        } catch (java.net.MalformedURLException malformed) {
+            throw new IllegalArgumentException("Invalid stored custom skull skin URL: " + skinUrl, malformed);
+        }
         invoke(profile, "setTextures", Class.forName("org.bukkit.profile.PlayerTextures"), textures);
+    }
+
+    /** Used when only Bukkit PlayerTextures are exposed, to restore modern raw properties. */
+    private static List<Map<String, String>> propertiesForModern(Map<String, Object> data) {
+        List<Map<String, String>> values = properties(data);
+        if (!values.isEmpty()) return values;
+        String url = string(data.get("skin_url"));
+        if (url != null) {
+            Map<String, String> texture = new LinkedHashMap<String, String>();
+            texture.put("name", "textures");
+            String json = "{\"textures\":{\"SKIN\":{\"url\":\"" + url.replace("\"", "") + "\"}}}";
+            texture.put("value", java.util.Base64.getEncoder()
+                    .encodeToString(json.getBytes(StandardCharsets.UTF_8)));
+            values.add(texture);
+        }
+        return values;
     }
 
     private static String skinUrlFromTexture(List<Map<String, String>> properties) {
@@ -172,9 +192,12 @@ final class SkullProfileSupport {
             try {
                 String json = new String(java.util.Base64.getDecoder().decode(property.get("value")),
                         StandardCharsets.UTF_8);
+                int skin = json.indexOf("\"SKIN\"");
+                if (skin < 0) skin = json.indexOf("\"skin\"");
+                if (skin < 0) continue;
                 java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
-                        "\\\"SKIN\\\"\\s*:\\s*\\\\{[^}]*\\\"url\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"",
-                        java.util.regex.Pattern.CASE_INSENSITIVE).matcher(json);
+                        "\"url\"\\s*:\\s*\"([^\"]+)\"",
+                        java.util.regex.Pattern.CASE_INSENSITIVE).matcher(json.substring(skin));
                 if (matcher.find()) return matcher.group(1);
             } catch (IllegalArgumentException ignored) { }
         }
