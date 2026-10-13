@@ -46,6 +46,13 @@ public final class ShopRepository {
                 }
             }
             result.lastDay(yaml.getLong("showroom.last_day", -1L));
+            String rawState = yaml.getString("showroom.closure_state", "OPEN");
+            try {
+                result.closureState(ShowroomDefinition.ClosureState.valueOf(rawState));
+            } catch (IllegalArgumentException exception) {
+                throw new IllegalStateException("Invalid showroom.closure_state in " + file + ": " + rawState,
+                        exception);
+            }
             return result;
         }
         backupSchemaOne();
@@ -80,7 +87,7 @@ public final class ShopRepository {
 
     public void save(ShowroomDefinition showroom) {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema", 3);
+        yaml.set("schema", 4);
         if (showroom.exit() != null) writeLocation(yaml, "showroom.exit", showroom.exit());
         for (Map.Entry<String, ShopCuboid> entry : showroom.regions().entrySet())
             writeCuboid(yaml, "showroom.regions." + entry.getKey(), entry.getValue());
@@ -96,6 +103,7 @@ public final class ShopRepository {
                     yaml.set("showroom.requirements." + region.getKey() + "." + variant.getKey() + "."
                             + required.getKey(), required.getValue());
         yaml.set("showroom.last_day", showroom.lastDay());
+        yaml.set("showroom.closure_state", showroom.closureState().name());
         try { Files.createDirectories(file.getParent()); yaml.save(file.toFile()); }
         catch (IOException exception) { throw new IllegalStateException("Unable to save " + file, exception); }
     }
