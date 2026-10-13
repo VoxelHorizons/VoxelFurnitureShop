@@ -17,17 +17,24 @@ public final class RecordedBlock {
     private final int legacyData;
     private final String blockData;
     private final Map<String, Object> skullProfile;
+    private final Map<String, Object> tileData;
 
     /** Legacy snapshots do not contain a skull profile. */
     public RecordedBlock(int x, int y, int z, String material, int legacyData, String blockData) {
-        this(x, y, z, material, legacyData, blockData, null);
+        this(x, y, z, material, legacyData, blockData, null, null);
     }
 
     public RecordedBlock(int x, int y, int z, String material, int legacyData, String blockData,
                          Map<String, Object> skullProfile) {
+        this(x, y, z, material, legacyData, blockData, skullProfile, null);
+    }
+
+    public RecordedBlock(int x, int y, int z, String material, int legacyData, String blockData,
+                         Map<String, Object> skullProfile, Map<String, Object> tileData) {
         this.x = x; this.y = y; this.z = z; this.material = material;
         this.legacyData = legacyData; this.blockData = blockData;
         this.skullProfile = skullProfile == null ? null : deepCopy(skullProfile);
+        this.tileData = tileData == null ? null : deepCopy(tileData);
     }
 
     public int x() { return x; }
@@ -39,6 +46,9 @@ public final class RecordedBlock {
     public Map<String, Object> skullProfile() {
         return skullProfile == null ? null : deepCopy(skullProfile);
     }
+    public Map<String, Object> tileData() {
+        return tileData == null ? null : deepCopy(tileData);
+    }
 
     private static Map<String, Object> deepCopy(Map<String, Object> source) {
         Map<String, Object> copy = new LinkedHashMap<String, Object>();
@@ -49,6 +59,8 @@ public final class RecordedBlock {
 
     @SuppressWarnings("unchecked")
     private static Object copyValue(Object value) {
+        if (value instanceof org.bukkit.inventory.ItemStack)
+            return ((org.bukkit.inventory.ItemStack)value).clone();
         if (value instanceof Map) return deepCopy((Map<String, Object>)value);
         if (value instanceof List) {
             List<Object> copy = new ArrayList<Object>();
