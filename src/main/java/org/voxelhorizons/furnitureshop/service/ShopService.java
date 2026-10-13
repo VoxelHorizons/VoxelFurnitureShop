@@ -7,6 +7,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.voxelhorizons.furnitureshop.model.LayoutSnapshot;
 import org.voxelhorizons.furnitureshop.model.ShopCuboid;
 import org.voxelhorizons.furnitureshop.model.ShowroomDefinition;
+import org.voxelhorizons.furnitureshop.model.ShowroomDefinition.ClosureState;
 import org.voxelhorizons.furnitureshop.store.ShopRepository;
 import org.voxelhorizons.furnitureshop.store.SnapshotRepository;
 
@@ -39,7 +40,15 @@ public final class ShopService {
         this.plugin = plugin; this.store = store; this.snapshots = snapshots; this.layouts = layouts;
         this.snapshots.migrateLegacyFixtures();
         this.showroom = store.load();
-        // Persist the transparent schema-one migration immediately.
+        // A server restart destroys online editor sessions, not the physical
+        // showroom's protected closure. Restore it so unfinished edits are
+        // never overwritten by the first automatic daily rotation.
+        this.showroomOpen = showroom.closureState() == ClosureState.OPEN;
+        this.closedForEditing = showroom.closureState() == ClosureState.EDITING;
+        if (closedForEditing) plugin.getLogger().warning(
+                "Protected editing closure recovered with no active editors. "
+                + "Use /vfs edit on to resume or /vfs edit off to reopen and resume rotation.");
+        // Persist the transparent schema-one/older migration immediately.
         save();
     }
 
@@ -191,9 +200,15 @@ public final class ShopService {
             return true;
         }
 
-        if (!isEditor(player)) return false;
+        if (!isEditor(player)) {
+            // A logout, reload or server restart loses the UUID session while
+            // retaining the protected closure. /vfs edit off must be a safe
+            // recovery operation when no OTHER editor is actively working.
+            if (shouldEndProtectedClosure(closedForEditing, editing())) open();
+            return false;
+        }
         editors.remove(player.getUniqueId());
-        if (!editing() && closedForEditing) {
+        if (shouldEndProtectedClosure(closedForEditing, editing())) {
             // Reopen only after the LAST editor ends editing; never abandon a
             // second editor's work or apply a queued daily rotation.
             open();
@@ -203,6 +218,11 @@ public final class ShopService {
         }
         return false;
     }
+    /** Never reopen a protected showroom while another editor is still active. */
+    static boolean shouldEndProtectedClosure(boolean protectedClosure, boolean hasActiveEditors) {
+        return protectedClosure && !hasActiveEditors;
+    }
+
     /** All shop furniture interactions, including inventories and animations, are disabled. */
     public boolean isControlledFixture(org.voxelhorizons.furniture.model.FurnitureInstance instance) {
         if (instance == null) return false;
@@ -301,6 +321,10 @@ public final class ShopService {
         if (!editingClosure) editors.clear();
         showroomOpen = false;
         closedForEditing = editingClosure;
+        showroom.closureState(editingClosure ? ClosureState.EDITING : ClosureState.CLOSED);
+        // Persist BEFORE any potentially failing door/furniture operations:
+        // after a crash the next startup can still recover a protected closure.
+        save();
         for (Player player : new ArrayList<Player>(exit.getWorld().getPlayers())) {
             if (shouldEvacuate(at(player.getLocation()).isPresent(), canEdit(player), editingClosure)) {
                 player.teleport(exit);
@@ -310,12 +334,16 @@ public final class ShopService {
         applyDoors("closed");
     }
     public void open() {
-        // Reopening ends all edit sessions and allows rotation to resume normally.
+        // Reopen the actual doors/animations before clearing a protected pause.
+        // If restoration fails, leave the closure recoverable with a retry of
+        // /vfs edit off (or /vfs open) instead of silently losing its state.
+        setFurnitureAnimations(false);
+        applyDoors("open");
         editors.clear();
         closedForEditing = false;
         showroomOpen = true;
-        setFurnitureAnimations(false);
-        applyDoors("open");
+        showroom.closureState(ClosureState.OPEN);
+        save();
     }
 
     private void restockAllRegions() {
@@ -383,7 +411,14 @@ public final class ShopService {
         if (id == null || !id.matches("[a-z0-9_-]+")) throw new IllegalArgumentException("Identifiers use lowercase letters, numbers, _ and -");
     }
     public void removeEditor(Player player) {
-        if (player != null) editors.remove(player.getUniqueId());
+        if (player == null || !editors.remove(player.getUniqueId())) return;
+        // Do NOT reopen on disconnect: the last editor may be restarting
+        // while a layout is half finished. Keep the persisted closure paused
+        // until an authorized player resumes/ends editing explicitly.
+        if (shouldEndProtectedClosure(closedForEditing, editing())) {
+            plugin.getLogger().info("Last showroom editor disconnected; protected closure remains "
+                    + "paused until /vfs edit on or /vfs edit off.");
+        }
     }
 
     public void save() { store.save(showroom); }
