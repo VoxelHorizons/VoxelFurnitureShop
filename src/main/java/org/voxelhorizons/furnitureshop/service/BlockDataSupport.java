@@ -20,12 +20,19 @@ final class BlockDataSupport {
 
     @SuppressWarnings("deprecation")
     static void restore(Block block, String materialName, int legacyData, String serializedData) {
-        restore(block, materialName, legacyData, serializedData, null);
+        restore(block, materialName, legacyData, serializedData, null, null);
     }
 
     @SuppressWarnings("deprecation")
     static void restore(Block block, String materialName, int legacyData, String serializedData,
                         java.util.Map<String, Object> skullProfile) {
+        restore(block, materialName, legacyData, serializedData, skullProfile, null);
+    }
+
+    @SuppressWarnings("deprecation")
+    static void restore(Block block, String materialName, int legacyData, String serializedData,
+                        java.util.Map<String, Object> skullProfile,
+                        java.util.Map<String, Object> tileData) {
         Material material = Material.matchMaterial(materialName);
         if (material == null) throw new IllegalArgumentException("Unknown material: " + materialName);
         block.setType(material, false);
@@ -33,6 +40,7 @@ final class BlockDataSupport {
             block.setData((byte) legacyData, false);
         // Must be applied last: modifying block type/data recreates the tile entity.
         if (skullProfile != null) SkullProfileSupport.restore(block, skullProfile);
+        if (tileData != null) TileDataSupport.restore(block, tileData);
     }
 
     private static boolean restoreModern(Block block, String serializedData) {
