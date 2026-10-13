@@ -107,12 +107,14 @@ public final class SnapshotRepository {
 
     private static void save(Path file, LayoutSnapshot snapshot) {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema", 1);
+        yaml.set("schema", 3);
         for (int i = 0; i < snapshot.blocks().size(); i++) {
             RecordedBlock block = snapshot.blocks().get(i); String base = "blocks." + i;
             yaml.set(base + ".x", block.x()); yaml.set(base + ".y", block.y()); yaml.set(base + ".z", block.z());
             yaml.set(base + ".material", block.material()); yaml.set(base + ".legacy_data", block.legacyData());
             if (block.blockData() != null) yaml.set(base + ".block_data", block.blockData());
+            if (block.skullProfile() != null) yaml.set(base + ".skull_profile", block.skullProfile());
+            if (block.tileData() != null) yaml.set(base + ".tile_data", block.tileData());
         }
         for (int i = 0; i < snapshot.furniture().size(); i++) {
             RecordedFurniture furniture = snapshot.furniture().get(i); String base = "furniture." + i;
@@ -124,6 +126,18 @@ public final class SnapshotRepository {
         } catch (IOException exception) { throw new IllegalStateException("Unable to save snapshot " + file, exception); }
     }
 
+    /** Convert Bukkit nested sections to ordinary maps without losing serialized ItemStacks. */
+    private static java.util.Map<String, Object> profile(ConfigurationSection section) {
+        if (section == null) return null;
+        java.util.Map<String, Object> values = new java.util.LinkedHashMap<String, Object>();
+        for (String key : section.getKeys(false)) {
+            Object raw = section.get(key);
+            values.put(key, raw instanceof ConfigurationSection
+                    ? profile((ConfigurationSection)raw) : raw);
+        }
+        return values;
+    }
+
     private static LayoutSnapshot load(Path file) {
         if (!Files.exists(file)) throw new IllegalArgumentException("Snapshot does not exist: " + file);
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file.toFile());
@@ -132,7 +146,10 @@ public final class SnapshotRepository {
         if (blockSection != null) for (String key : blockSection.getKeys(false)) {
             String base = "blocks." + key;
             blocks.add(new RecordedBlock(yaml.getInt(base + ".x"), yaml.getInt(base + ".y"), yaml.getInt(base + ".z"),
-                    yaml.getString(base + ".material"), yaml.getInt(base + ".legacy_data"), yaml.getString(base + ".block_data")));
+                    yaml.getString(base + ".material"), yaml.getInt(base + ".legacy_data"),
+                    yaml.getString(base + ".block_data"),
+                    profile(yaml.getConfigurationSection(base + ".skull_profile")),
+                    profile(yaml.getConfigurationSection(base + ".tile_data"))));
         }
         List<RecordedFurniture> furniture = new ArrayList<RecordedFurniture>();
         ConfigurationSection furnitureSection = yaml.getConfigurationSection("furniture");

@@ -65,7 +65,9 @@ public final class LayoutService {
             boolean collision = furniture.byBlock(block).isPresent();
             blocks.add(new RecordedBlock(block.getX() - cuboid.minX(), block.getY() - cuboid.minY(),
                     block.getZ() - cuboid.minZ(), collision ? Material.AIR.name() : block.getType().name(),
-                    collision ? 0 : block.getData(), collision ? null : BlockDataSupport.capture(block)));
+                    collision ? 0 : block.getData(), collision ? null : BlockDataSupport.capture(block),
+                    collision ? null : SkullProfileSupport.capture(block),
+                    collision ? null : TileDataSupport.capture(block)));
         }
         List<RecordedFurniture> recorded = new ArrayList<RecordedFurniture>();
         for (FurnitureInstance instance : furniture.instances()) {
@@ -114,7 +116,8 @@ public final class LayoutService {
         for (RecordedBlock value : snapshot.blocks()) {
             if (Material.AIR.name().equals(value.material())) continue;
             Block block = world.getBlockAt(cuboid.minX() + value.x(), cuboid.minY() + value.y(), cuboid.minZ() + value.z());
-            BlockDataSupport.restore(block, value.material(), value.legacyData(), value.blockData());
+            BlockDataSupport.restore(block, value.material(), value.legacyData(), value.blockData(),
+                    value.skullProfile(), value.tileData());
             restoredBlocks++;
         }
         int restoredFurniture = 0;
