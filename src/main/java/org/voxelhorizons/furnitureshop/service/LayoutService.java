@@ -53,7 +53,6 @@ public final class LayoutService {
         return furniture.breakFurniture(player, instance);
     }
 
-    @SuppressWarnings("deprecation")
     public LayoutSnapshot capture(ShopCuboid cuboid) {
         return capture(cuboid, Collections.<ShopCuboid>emptyList());
     }
@@ -65,7 +64,8 @@ public final class LayoutService {
             boolean collision = furniture.byBlock(block).isPresent();
             blocks.add(new RecordedBlock(block.getX() - cuboid.minX(), block.getY() - cuboid.minY(),
                     block.getZ() - cuboid.minZ(), collision ? Material.AIR.name() : block.getType().name(),
-                    collision ? 0 : block.getData(), collision ? null : BlockDataSupport.capture(block),
+                    collision ? 0 : BlockDataSupport.captureLegacyData(block),
+                    collision ? null : BlockDataSupport.capture(block),
                     collision ? null : SkullProfileSupport.capture(block),
                     collision ? null : TileDataSupport.capture(block)));
         }
