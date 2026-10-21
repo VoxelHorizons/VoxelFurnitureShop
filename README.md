@@ -20,7 +20,7 @@ Persistent showroom furniture groups are separate from randomized variants. Furn
 
 - VoxelCore
 - VoxelFurniture with the system placement API
-- Spigot/Paper 1.12.2 through 26.2
+- Spigot/Paper 1.12.2 through 26.3
 - Java 8 or newer at runtime
 
 ## Create or retain display regions
