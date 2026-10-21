@@ -38,7 +38,7 @@ jobs:
         run: mvn -B -f VoxelFurnitureShop/pom.xml verify
       - uses: actions/upload-artifact@v4
         with:
-          name: VoxelFurnitureShop
+          name: VoxelFurnitureShop-mc1.12-26.3
           path: VoxelFurnitureShop/target/VoxelFurnitureShop-*.jar
           if-no-files-found: error
 
@@ -51,7 +51,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: VoxelFurnitureShop
+          name: VoxelFurnitureShop-mc1.12-26.3
           path: release
       - name: Publish snapshot release
         uses: softprops/action-gh-release@v2
