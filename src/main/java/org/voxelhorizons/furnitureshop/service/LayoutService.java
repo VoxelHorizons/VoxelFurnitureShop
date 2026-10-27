@@ -53,7 +53,6 @@ public final class LayoutService {
         return furniture.breakFurniture(player, instance);
     }
 
-    @SuppressWarnings("deprecation")
     public LayoutSnapshot capture(ShopCuboid cuboid) {
         return capture(cuboid, Collections.<ShopCuboid>emptyList());
     }
@@ -65,7 +64,8 @@ public final class LayoutService {
             boolean collision = furniture.byBlock(block).isPresent();
             blocks.add(new RecordedBlock(block.getX() - cuboid.minX(), block.getY() - cuboid.minY(),
                     block.getZ() - cuboid.minZ(), collision ? Material.AIR.name() : block.getType().name(),
-                    collision ? 0 : block.getData(), collision ? null : BlockDataSupport.capture(block),
+                    collision ? 0 : BlockDataSupport.captureLegacyData(block),
+                    collision ? null : BlockDataSupport.capture(block),
                     collision ? null : SkullProfileSupport.capture(block),
                     collision ? null : TileDataSupport.capture(block)));
         }
@@ -154,9 +154,16 @@ public final class LayoutService {
         int sizeX = cuboid.maxX() - cuboid.minX();
         int sizeY = cuboid.maxY() - cuboid.minY();
         int sizeZ = cuboid.maxZ() - cuboid.minZ();
-        for (RecordedBlock block : snapshot.blocks()) if (block.x() < 0 || block.x() > sizeX || block.y() < 0
-                || block.y() > sizeY || block.z() < 0 || block.z() > sizeZ)
-            throw new IllegalArgumentException("Snapshot does not fit target cuboid");
+        for (RecordedBlock block : snapshot.blocks()) {
+            if (block.x() < 0 || block.x() > sizeX || block.y() < 0
+                    || block.y() > sizeY || block.z() < 0 || block.z() > sizeZ)
+                throw new IllegalArgumentException("Snapshot does not fit target cuboid");
+            if (!Material.AIR.name().equals(block.material())) {
+                // Fail *before* clearing world blocks if a legacy-only layout
+                // cannot be restored without deprecated CraftLegacy conversion.
+                BlockDataSupport.validateSnapshot(block.material(), block.legacyData(), block.blockData());
+            }
+        }
     }
 
     public static final class ApplyResult {
