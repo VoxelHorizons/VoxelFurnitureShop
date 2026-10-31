@@ -5,27 +5,30 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 75
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: VoxelFurnitureShop
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: VoxelHorizons/VoxelCore
+          ref: 73b337ccbad41cbbae5a0573e4a30a7742539ba7 # Pinned VoxelCore commit
           path: VoxelCore
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: VoxelHorizons/VoxelFurniture
-          # Build this feature PR with VoxelFurniture's corresponding worth API branch.
-          # Switch back to main once its prerequisite PR is merged.
-          ref: ${{ (github.ref == 'refs/heads/feat/shop-furniture-tooltips-edit-protection' || github.head_ref == 'feat/shop-furniture-tooltips-edit-protection') && 'feat/furniture-item-worth-api' || 'main' }}
+          ref: 86b1ba2bad2ffc88102ef3ac3b5b1a48361218f0 # Pinned VoxelFurniture commit
           path: VoxelFurniture
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '25'
@@ -36,28 +39,9 @@ jobs:
         run: mvn -B -f VoxelFurniture/pom.xml install -DskipTests
       - name: Verify VoxelFurnitureShop
         run: mvn -B -f VoxelFurnitureShop/pom.xml verify
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: VoxelFurnitureShop-mc1.12-26.3
           path: VoxelFurnitureShop/target/VoxelFurnitureShop-*.jar
           if-no-files-found: error
 
-  publish:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: VoxelFurnitureShop-mc1.12-26.3
-          path: release
-      - name: Publish snapshot release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.0-SNAPSHOT
-          name: VoxelFurnitureShop v1.0-SNAPSHOT
-          prerelease: true
-          overwrite_files: true
-          files: release/VoxelFurnitureShop-*.jar
