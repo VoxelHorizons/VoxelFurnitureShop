@@ -34,7 +34,13 @@ import java.util.Iterator;
 
 public final class ProtectionListener implements Listener {
     private final ShopService shops;
-    public ProtectionListener(ShopService shops) { this.shops = shops; }
+    private final ShopPurchaseService purchases;
+    private final VoxelFurnitureShop plugin;
+
+    public ProtectionListener(ShopService shops) { this(shops, null, null); }
+    public ProtectionListener(ShopService shops, ShopPurchaseService purchases, VoxelFurnitureShop plugin) {
+        this.shops = shops; this.purchases = purchases; this.plugin = plugin;
+    }
     private boolean protectedBlock(Block block) { return block != null && shops.at(block.getLocation()).isPresent(); }
     private boolean bypass(Player player) { return shops.canEdit(player); }
 
@@ -99,6 +105,10 @@ public final class ProtectionListener implements Listener {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK && event.getAction() != Action.LEFT_CLICK_BLOCK) return;
         if (!shops.isControlledFixture(event.getClickedBlock())) return;
         Player player = event.getPlayer();
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && !bypass(player)
+                && event.getHand() == org.bukkit.inventory.EquipmentSlot.HAND && purchases != null) {
+            shops.layouts().byBlock(event.getClickedBlock()).ifPresent(instance -> purchases.tryOpen(player, instance));
+        }
         if (event.getAction() == Action.LEFT_CLICK_BLOCK && bypass(player)) {
             java.util.Optional<FurnitureInstance> instance = shops.layouts().byBlock(event.getClickedBlock());
             if (instance.isPresent()) {
@@ -124,10 +134,27 @@ public final class ProtectionListener implements Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    // Run before VoxelFurniture's HIGH listener can dye, animate or open storage.
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void controlledEntityInteraction(PlayerInteractEntityEvent event) {
-        if (shops.isControlledFixture(event.getRightClicked().getUniqueId())
-                && !bypass(event.getPlayer())) event.setCancelled(true);
+        if (!shops.isControlledFixture(event.getRightClicked().getUniqueId())
+                || bypass(event.getPlayer())) return;
+        event.setCancelled(true);
+        if (purchases != null && event.getHand() == org.bukkit.inventory.EquipmentSlot.HAND) {
+            shops.layouts().byEntity(event.getRightClicked().getUniqueId())
+                    .ifPresent(instance -> purchases.tryOpen(event.getPlayer(), instance));
+        }
+    }
+
+    // Display-only furniture may be targeted through its visible model rather
+    // than an interactable collision block/entity. Match the tooltip's view ray.
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = false)
+    public void lookingAtFurniture(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_AIR
+                || event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND
+                || bypass(event.getPlayer()) || purchases == null || plugin == null) return;
+        FurnitureInstance selected = plugin.targetedFurniture(event.getPlayer());
+        if (purchases.tryOpen(event.getPlayer(), selected)) event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
@@ -151,7 +178,10 @@ public final class ProtectionListener implements Listener {
     // Defensive fallback for other VoxelFurniture callers that dispatch its custom event directly.
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
     public void controlledFurnitureInteraction(FurnitureInteractEvent event) {
-        if (shops.isControlledFixture(event.getInstance()) && !bypass(event.getPlayer())) event.setCancelled(true);
+        if (shops.isControlledFixture(event.getInstance()) && !bypass(event.getPlayer())) {
+            event.setCancelled(true);
+            if (purchases != null) purchases.tryOpen(event.getPlayer(), event.getInstance());
+        }
     }
 
     /**

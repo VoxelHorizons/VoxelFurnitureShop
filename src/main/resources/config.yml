@@ -15,7 +15,11 @@ tooltip:
   max-distance: 5.0
   check-interval-ticks: 5
   title: "&f<furniture>"
-  available-line: "&6<furniture_value> &f:shop_coin:"
+  # <furniture_prices> includes every configured purchase currency.
+  available-line: "<furniture_prices>"
+  coins-format: "&6<amount> &f:shop_coin:"
+  tokens-format: "&d<amount> Tokens"
+  currency-separator: " &7or "
   unavailable-line: "&6Price unavailable &f:shop_coin:"
   sale-line: "&f:shop_mouse: &7Click to Buy"
   not-for-sale-line: "&f:shop_mouse: &7Not for sale"

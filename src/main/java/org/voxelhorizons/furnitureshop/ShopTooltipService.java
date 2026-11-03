@@ -10,6 +10,8 @@ import org.voxelhorizons.furniture.model.FurnitureDefinition;
 import org.voxelhorizons.furniture.model.FurnitureInstance;
 import org.voxelhorizons.furnitureshop.service.LayoutService;
 import org.voxelhorizons.furnitureshop.service.ShopService;
+import org.voxelhorizons.furnitureshop.service.FurniturePricing;
+import org.voxelhorizons.furnitureshop.service.FurniturePricing.Currency;
 
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
@@ -34,6 +36,9 @@ public final class ShopTooltipService {
     private final String unavailableLine;
     private final String saleLine;
     private final String notForSaleLine;
+    private final String coinsFormat;
+    private final String tokensFormat;
+    private final String currencySeparator;
 
     public ShopTooltipService(JavaPlugin plugin, ShopService shops) {
         this(plugin, shops, plugin.getConfig());
@@ -50,6 +55,9 @@ public final class ShopTooltipService {
         this.unavailableLine = config.getString("tooltip.unavailable-line", "&6Price unavailable");
         this.saleLine = config.getString("tooltip.sale-line", "&f:shop_mouse: &7Click to Buy");
         this.notForSaleLine = config.getString("tooltip.not-for-sale-line", "&f:shop_mouse: &7Not for sale");
+        this.coinsFormat = config.getString("tooltip.coins-format", "&6<amount> &f:shop_coin:");
+        this.tokensFormat = config.getString("tooltip.tokens-format", "&d<amount> Tokens");
+        this.currencySeparator = config.getString("tooltip.currency-separator", " &7or ");
     }
 
     public void tick() {
@@ -63,12 +71,22 @@ public final class ShopTooltipService {
             if (target == null || !shops.isActiveVariantFurniture(target)) {
                 clear(player); continue;
             }
-            OptionalDouble value = furniture.value(target);
-            // Tooltip visibility is independent from commerce metadata; missing price never hides an active display.
+            FurniturePricing value;
+            try { value = pricing(target); }
+            catch (IllegalArgumentException invalid) {
+                clear(player);
+                continue; // Invalid authored prices must not break every player's tooltip tick.
+            }
+            // Missing prices still render their configured not-for-sale lines.
             String name = furniture.displayName(target);
-            String price = value.isPresent() ? price(value.getAsDouble()) : "";
-            List<String> lines = renderLines(title, availableLine, unavailableLine,
-                    saleLine, notForSaleLine, name, price, value.isPresent());
+            String combined = formatPrices(value);
+            // Preserve existing coin-only config.yml, but don't mislabel Tokens
+            // as Coins when an older saved config still uses the original line.
+            String line = value.offers(Currency.TOKENS)
+                    && "&6<furniture_value> &f:shop_coin:".equals(availableLine)
+                    ? "<furniture_prices>" : availableLine;
+            List<String> lines = renderLines(title, line, unavailableLine,
+                    saleLine, notForSaleLine, name, value.legacyValue(), combined, value.available());
             try {
                 VoxelCore.getInstance().getTooltipRenderer().show(player, variant,
                         lines.get(0), lines.get(1), lines.get(2), 12);
@@ -88,12 +106,20 @@ public final class ShopTooltipService {
     static List<String> renderLines(String title, String availableLine, String unavailableLine,
                                     String saleLine, String notForSaleLine,
                                     String furnitureName, String value, boolean priced) {
+        return renderLines(title, availableLine, unavailableLine, saleLine, notForSaleLine,
+                furnitureName, value, value, priced);
+    }
+
+    static List<String> renderLines(String title, String availableLine, String unavailableLine,
+                                    String saleLine, String notForSaleLine,
+                                    String furnitureName, String value, String prices, boolean priced) {
         List<String> result = new ArrayList<String>(3);
         for (String template : new String[]{title,
                 priced ? availableLine : unavailableLine,
                 priced ? saleLine : notForSaleLine}) {
             result.add(template.replace("<furniture>", furnitureName)
-                    .replace("<furniture_value>", value));
+                    .replace("<furniture_value>", value)
+                    .replace("<furniture_prices>", prices));
         }
         return result;
     }
@@ -107,6 +133,24 @@ public final class ShopTooltipService {
         for (Player player : plugin.getServer().getOnlinePlayers()) clear(player);
         displayed.clear();
     }
+
+    private FurniturePricing pricing(FurnitureInstance instance) {
+        return FurniturePricing.fromItem(VoxelCore.getInstance().getItemManager()
+                .getDefinition(instance.definitionId()).orElse(null));
+    }
+
+    private String formatPrices(FurniturePricing price) {
+        StringBuilder builder = new StringBuilder();
+        if (price.offers(Currency.COINS))
+            builder.append(coinsFormat.replace("<amount>", FurniturePricing.format(price.cost(Currency.COINS))));
+        if (price.offers(Currency.TOKENS)) {
+            if (builder.length() > 0) builder.append(currencySeparator);
+            builder.append(tokensFormat.replace("<amount>", FurniturePricing.format(price.cost(Currency.TOKENS))));
+        }
+        return builder.toString();
+    }
+
+    public FurnitureInstance target(Player player) { return target(player, shops.layouts()); }
 
     private FurnitureInstance target(Player player, LayoutService furniture) {
         Location eye = player.getEyeLocation();
@@ -145,12 +189,19 @@ public final class ShopTooltipService {
             total++;
             if (!shops.isActiveVariantFurniture(instance)) continue;
             eligible++;
-            if (furniture.value(instance).isPresent()) priced++;
+            try { if (pricing(instance).available()) priced++; }
+            catch (IllegalArgumentException invalid) { /* report as unpriced */ }
         }
         FurnitureInstance selected = target(player, furniture);
-        String selection = selected == null ? "none" :
-                selected.definitionId() + ", worth=" + (furniture.value(selected).isPresent()
-                ? price(furniture.value(selected).getAsDouble()) : "unset");
+        String selection = "none";
+        if (selected != null) {
+            try {
+                FurniturePricing value = pricing(selected);
+                selection = selected.definitionId() + ", worth=" + (value.available() ? value.display() : "unset");
+            } catch (IllegalArgumentException invalid) {
+                selection = selected.definitionId() + ", invalid worth: " + invalid.getMessage();
+            }
+        }
         return "enabled=" + plugin.getConfig().getBoolean("tooltip.enabled", false)
                 + ", shopOpen=" + shops.isOpen() + ", editor=" + shops.canEdit(player)
                 + ", tracked=" + total + ", activeVariant=" + eligible

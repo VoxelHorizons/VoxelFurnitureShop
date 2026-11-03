@@ -1,10 +1,26 @@
-# VoxelFurnitureShop: priced variant tooltips and showroom safety
+# VoxelFurnitureShop: priced variant tooltips, purchasing and showroom safety
 
 Install a compatible VoxelCore (with the named UI tooltip renderer) and VoxelFurniture (with the new optional furniture `value` metadata API) before this build.
 
 ## Pricing source
 
-Furniture items can define `properties.furniture.value: 250` (or `worth: 250`). The metadata is inherited through the existing content inheritance system. Items without a value are **not for sale**, but still show a tooltip containing the configured `tooltip.unpriced-label` and a `Not for sale` prompt. No currency is withdrawn or inventory item granted yet; purchasing will be implemented separately. This is display-only pricing; Vault provides a balance service and does not itself register item worth with Essentials or ShopGUI+.
+Furniture items define `properties.furniture.worth` (or legacy `value`). A number is a **Coins** price for backwards compatibility. A mapping offers Coins, Tokens, or both as **alternative** methods of payment, never a combined charge. This price is inherited through the existing content inheritance system. Unpriced furniture displays `Not for sale` and cannot open checkout. Coins use the existing legacy Vault/Essentials provider; Tokens use VoxelCore's separate VaultUnlocked balance bridge.
+
+```yaml
+properties:
+  furniture:
+    worth:
+      coins: 250000
+      tokens: 500
+```
+
+Also valid: `worth: 300` (Coins only), `worth: {tokens: 500}` (Tokens only). Tokens must be whole numbers; Coins may have at most two decimals. Invalid, negative, non-numeric or unknown currency prices are rejected.
+
+## Purchasing
+
+Right-click a priced active-variant showroom furniture model or collision block to open its native inventory menu. The item preview appears above separate Coins and Tokens choices (only configured choices are shown). Selecting a currency opens a confirmation screen before any funds are withdrawn. The server verifies the display is still active, the price hasn't changed, the player is nearby, and the inventory has an empty slot. It then withdraws **only the selected currency** and grants one real item using VoxelCore's item manager.
+
+An unsuccessful payment does not grant furniture. If delivery unexpectedly fails after payment, the plugin attempts a refund and logs any refund failure for staff action. Shop fixtures, persistent decorative furniture and closed/editing showrooms are never purchasable. Bedrock and Java use the same inventory-based UI. VaultUnlocked must be enabled and VoxelCore Tokens configured to pay with Tokens; the traditional Vault Coins economy must be registered to pay with Coins.
 
 ## Config
 
@@ -16,7 +32,10 @@ tooltip:
   check-interval-ticks: 5
 
   title: "&f<furniture>"
-  available-line: "&6<furniture_value> &f:shop_coin:"
+  available-line: "<furniture_prices>"
+  coins-format: "&6<amount> &f:shop_coin:"
+  tokens-format: "&d<amount> Tokens"
+  currency-separator: " &7or "
   unavailable-line: "&6Price unavailable &f:shop_coin:"
   sale-line: "&f:shop_mouse: &7Click to Buy"
   not-for-sale-line: "&f:shop_mouse: &7Not for sale"
@@ -28,7 +47,7 @@ The renderer outputs exactly three lines, composed from five independently edita
 - Line 2 uses `available-line` if the furniture has a configured numeric worth, otherwise `unavailable-line`.
 - Line 3 uses `sale-line` if worth exists, otherwise `not-for-sale-line`.
 
-`<furniture>` inserts the configured display name and `<furniture_value>` inserts the numeric value (empty when unset). Every line may contain color codes and VoxelCore UI font placeholders such as `:shop_coin:` and `:shop_mouse:`. All fields are complete string templates; no text matching/replacement for phrases like "Click to Buy" occurs.
+`<furniture>` inserts the display name, `<furniture_value>` retains the legacy numeric price placeholder, and `<furniture_prices>` inserts the formatted Coins and/or Tokens options. Use the latter for dual currency. `<amount>` in each currency format inserts its own amount. Every line may contain color codes and VoxelCore UI font placeholders such as `:shop_coin:` and `:shop_mouse:`. All fields are complete string templates; no text matching/replacement for phrases like "Click to Buy" occurs.
 
 **Migration:** The previous `tooltip.lore` list has been superseded by `tooltip.title` and `tooltip.available-line`. Move any first/second lines you've customized into those fields. Older keys such as `unpriced-label`, `buy-label` and `not-for-sale-label` are no longer used. Apply changes with `/vfs reload`.
 
@@ -38,7 +57,7 @@ Use `/vfs reload` after editing the plugin's `config.yml`. It validates the file
 
 Run `/vfs tooltip debug` while looking at furniture to inspect whether tooltips are enabled, how many active variant instances are recognized, how many have a price, and which target is selected. This is useful for missing prices and narrow hitbox problems.
 
-Only instances within a region with an **active variant** can display a tooltip. Persistent furniture, shared doors and fixtures are excluded even if inside a region. The shop always intercepts furniture interactions inside controlled areas; inventory UIs and click animations no longer trigger. Actual purchase processing is intentionally **not** active yet despite the configured "Click to Buy" prompt.
+Only instances within a region with an **active variant** can display a tooltip. Persistent furniture, shared doors and fixtures are excluded even if inside a region. The shop continues intercepting furniture interactions inside controlled areas, preventing display inventory, dyeing and animations. Eligible right-clicks instead open the purchase UI.
 
 ## Adventure/edit mode and rotation
 

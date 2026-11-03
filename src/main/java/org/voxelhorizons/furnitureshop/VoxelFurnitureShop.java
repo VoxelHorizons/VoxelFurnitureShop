@@ -21,6 +21,7 @@ public final class VoxelFurnitureShop extends JavaPlugin {
     private ShopService shops;
     private ShopGameModeListener modes;
     private ShopTooltipService tooltips;
+    private ShopPurchaseService purchases;
     private BukkitTask tooltipTask;
     private BukkitTask rotationTask;
 
@@ -30,6 +31,11 @@ public final class VoxelFurnitureShop extends JavaPlugin {
 
     public String tooltipDiagnostics(org.bukkit.entity.Player player) {
         return tooltips == null ? "Tooltips are disabled or not initialized (tooltip.enabled is false)." : tooltips.diagnostics(player);
+    }
+
+    /** Shared targeting for both the tooltip and click-to-purchase path. */
+    public org.voxelhorizons.furniture.model.FurnitureInstance targetedFurniture(org.bukkit.entity.Player player) {
+        return tooltips == null ? null : tooltips.target(player);
     }
 
     @Override public void onEnable() {
@@ -50,7 +56,9 @@ public final class VoxelFurnitureShop extends JavaPlugin {
             if (command == null) throw new IllegalStateException("vfshop command is missing from plugin.yml");
             command.setExecutor(executor);
             command.setTabCompleter(executor);
-            getServer().getPluginManager().registerEvents(new ProtectionListener(shops), this);
+            purchases = new ShopPurchaseService(this, shops);
+            getServer().getPluginManager().registerEvents(new ProtectionListener(shops, purchases, this), this);
+            getServer().getPluginManager().registerEvents(purchases, this);
             modes = new ShopGameModeListener(shops);
             getServer().getPluginManager().registerEvents(modes, this);
             getServer().getScheduler().runTaskTimer(this, new Runnable() {
@@ -75,8 +83,7 @@ public final class VoxelFurnitureShop extends JavaPlugin {
         candidate.load(file); // Throws on malformed YAML rather than silently loading an empty config.
         candidate.setDefaults(getConfig().getDefaults()); // Mirror Bukkit's bundled defaults.
         validateRuntimeConfig(candidate);
-        ShopTooltipService replacement = candidate.getBoolean("tooltip.enabled", false)
-                ? new ShopTooltipService(this, shops, candidate) : null;
+        ShopTooltipService replacement = new ShopTooltipService(this, shops, candidate);
         // All validation has succeeded. The live config and its tasks can now be switched.
         reloadConfig();
         switchTasks(candidate, replacement);
@@ -84,8 +91,7 @@ public final class VoxelFurnitureShop extends JavaPlugin {
 
     private void applyRuntimeConfig(FileConfiguration config) {
         validateRuntimeConfig(config);
-        ShopTooltipService replacement = config.getBoolean("tooltip.enabled", false)
-                ? new ShopTooltipService(this, shops, config) : null;
+        ShopTooltipService replacement = new ShopTooltipService(this, shops, config);
         switchTasks(config, replacement);
     }
 
@@ -112,7 +118,7 @@ public final class VoxelFurnitureShop extends JavaPlugin {
         if (tooltips != null) tooltips.shutdown(); // Clear previous overlays immediately.
         tooltips = replacement;
 
-        if (replacement != null) {
+        if (config.getBoolean("tooltip.enabled", false)) {
             long period = config.getLong("tooltip.check-interval-ticks", 5L);
             tooltipTask = getServer().getScheduler().runTaskTimer(this, new Runnable() {
                 @Override public void run() {
