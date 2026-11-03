@@ -150,9 +150,15 @@ public final class ProtectionListener implements Listener {
     // than an interactable collision block/entity. Match the tooltip's view ray.
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = false)
     public void lookingAtFurniture(PlayerInteractEvent event) {
-        if (event.getAction() != Action.RIGHT_CLICK_AIR
+        if ((event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK)
                 || event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND
                 || bypass(event.getPlayer()) || purchases == null || plugin == null) return;
+        // A visual display can sit in front of an ordinary showroom block,
+        // which Minecraft reports as RIGHT_CLICK_BLOCK rather than AIR.
+        if (event.getAction() == Action.RIGHT_CLICK_BLOCK
+                && (event.getClickedBlock() == null
+                    || shops.isControlledFixture(event.getClickedBlock())
+                    || !shops.at(event.getClickedBlock().getLocation()).isPresent())) return;
         FurnitureInstance selected = plugin.targetedFurniture(event.getPlayer());
         if (purchases.tryOpen(event.getPlayer(), selected)) event.setCancelled(true);
     }
