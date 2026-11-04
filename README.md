@@ -110,6 +110,24 @@ Manual application resolves and applies the required variants too. Automatic rot
 combination across every region; it will stop with a clear error instead of drawing an invalid combination when no
 solution exists. Requirements can be chained across multiple regions.
 
+**Required variants are exclusive during automatic rotation.** For example, when
+`left/cherry_bedroom` requires `main/cherry_archway`, the archway can only be selected if
+`left/cherry_bedroom` is also active. The planner will **not** independently combine it
+with `left/cherry_park` or other unrelated variants. If multiple variants explicitly
+require the same archway, any of those requesting variants can legitimately pair with it.
+All other (unreserved) variants remain freely selectable.
+
+**Record an alternative main-region variant**, such as `main/plain`, if another
+region can select a setup that does not require the archway. If the archway is the
+*only* recorded main variant and the left region has no compatible requester, the
+rotation correctly reports no compatible combination rather than spawning a floating
+archway. This change uses your existing saved `variant require` relationships and
+does not modify stored snapshots.
+
+`/vfs variant apply` remains a direct editing/preview command: it applies the
+requested snapshot and its forward dependencies but does not restock every other
+region. Use a full rotation to verify cross-region exclusivity in the live showroom.
+
 Remove one dependency without deleting either setup:
 
 ```text
