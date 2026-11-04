@@ -20,6 +20,7 @@ import java.util.Set;
  * are available. All artwork and native inventory hitboxes are configurable.
  */
 public final class ShopPurchaseUi {
+    public static final int INVENTORY_SIZE = 9;
     private final String title;
     private final String buttonItem;
     private final int previewSlot;
@@ -118,11 +119,11 @@ public final class ShopPurchaseUi {
     private static int slot(Object raw, String path, int fallback) {
         if (raw == null) return fallback;
         if (!(raw instanceof Number)) {
-            throw new IllegalArgumentException(path + " must contain integer slots 0–26");
+            throw new IllegalArgumentException(path + " must contain integer slots 0–8");
         }
         double n = ((Number) raw).doubleValue();
-        if (!Double.isFinite(n) || n != Math.rint(n) || n < 0 || n >= 27) {
-            throw new IllegalArgumentException(path + " must contain integer slots 0–26");
+        if (!Double.isFinite(n) || n != Math.rint(n) || n < 0 || n >= INVENTORY_SIZE) {
+            throw new IllegalArgumentException(path + " must contain integer slots 0–8");
         }
         return (int) n;
     }
