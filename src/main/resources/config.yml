@@ -38,9 +38,31 @@ tooltip:
 # actual Bukkit inventory slot hitboxes (0-26), not arbitrary pixel regions.
 # A single 27-slot screen. The title includes your authored VoxelCore
 # background glyph; the two button groups are VoxelCore blank render items.
+# Original confirmation GUI; used for all priced furniture.
+# With multiple available currencies, green opens the optional choice GUI below.
 purchase-ui:
   title: ":offset_-8::furniture_shop::offset_8:&rPurchase Furniture"
   button-item: "voxel:ui/blank"
   preview-slot: 4
   cancel-slots: [1, 2]
   purchase-slots: [6, 7]
+
+  # Only opened when the item offers more than one available currency.
+  # The supplied artwork has a Coins button on the left and Tokens on the right.
+  # Add more named currencies here if your economy provider exposes them.
+  currency-selection:
+    title: ":offset_-8::furniture_shop_currency::offset_8:&rSelect Currency"
+    button-item: "voxel:ui/blank"
+    preview-slot: 4
+    currencies:
+      coins: [1, 2]
+      tokens: [6, 7]
+
+# Per-currency insufficient-balance messages. Other currency IDs use default.
+# <price>/<amount>, <currency> and <furniture> can be used in every message.
+messages:
+  insufficient-funds:
+    default: "&cYou need <price> <currency> to buy <furniture>."
+    currencies:
+      coins: "&cYou need <price> Coins to buy <furniture>."
+      tokens: "&cYou need <price> Tokens to buy <furniture>."

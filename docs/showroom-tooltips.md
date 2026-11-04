@@ -29,11 +29,15 @@ economy:
   legacy-currency: coins   # ID mapped to the original Vault economy
 ```
 
-## Purchasing
+## Purchasing and currency choice
 
-Right-click a priced active showroom display to open **one** 27-slot purchasing screen. The furniture item is previewed in slot 4; slots 1 and 2 both cancel, and slots 6 and 7 both purchase. The red X and green check are drawn by your authored `:furniture_shop:` font glyph, while the underlying buttons are `voxel:ui/blank` VoxelCore render items.
+The normal confirmation screen is always the first screen. It previews the furniture in slot **4** with two transparent `voxel:ui/blank` button groups: **1 and 2** cancel, **6 and 7** confirm. Your custom `:furniture_shop:` glyph draws the red X and green check over these inventory click areas.
 
-The currency named by `economy.default-currency` is selected initially when offered, otherwise the first configured, available currency. **Left-click green to purchase with the currently selected currency. Right-click (or shift-click) green to cycle payment methods, without opening another screen.** The green button tooltip identifies the selected currency and price; switching also sends the selection in chat. This works with any number of named currencies supplied by VaultUnlocked or the single legacy Vault alias. Both sides of green perform the same actions; both sides of red close the window.
+- **One currency available** (Coins *or* Tokens, or any other named currency): clicking green immediately verifies and purchases using that currency. No additional GUI is opened.
+- **Multiple currencies available:** clicking green opens a *currency-selection* screen using the `:furniture_shop_currency:` glyph. Left slots **1 and 2** purchase with Coins, and right slots **6 and 7** purchase with Tokens by default. Press ESC to leave the second screen without paying.
+- The second screen uses the **same furniture preview** (slot 4). Its currency buttons trigger purchases directly; there is no third screen and no right-click-to-cycle mechanism.
+- Currency IDs are never hard-coded into payment logic. The `currency-selection.currencies` mapping associates **arbitrary provider currency IDs** with the inventory slots drawn by the corresponding custom UI glyph. Add entries for `gems`, `credits`, etc., if your furniture uses those names. Every available currency must have a configured set of click slots when more than one option is offered.
+- A server with only Vault's single unnamed currency can use the legacy alias; VaultUnlocked supplies any named currencies registered by its economy provider. Each option spends **only that currency**, never a combination.
 
 ```yaml
 purchase-ui:
@@ -42,11 +46,29 @@ purchase-ui:
   preview-slot: 4
   cancel-slots: [1, 2]
   purchase-slots: [6, 7]
+  currency-selection:
+    title: ":offset_-8::furniture_shop_currency::offset_8:&rSelect Currency"
+    button-item: "voxel:ui/blank"
+    preview-slot: 4
+    currencies:
+      coins: [1, 2]
+      tokens: [6, 7]
+
+messages:
+  insufficient-funds:
+    default: "&cYou need <price> <currency> to buy <furniture>."
+    currencies:
+      coins: "&cYou need <price> Coins to buy <furniture>."
+      tokens: "&cYou need <price> Tokens to buy <furniture>."
 ```
 
-The GUI title resolves your VoxelCore font aliases at opening; you provide the texture. The purchased item is created through VoxelCore. Before withdrawing currency, the server checks the display is still active, the price and provider have not changed, the player is nearby, and there is inventory space. Failed delivery triggers a refund attempt and logs any refund failure. No third-party inventory or packet plugin is required. As before, shop fixtures and closed/editing showrooms cannot be purchased.
+The titles are resource-pack glyph aliases. Use the exact names authored in VoxelCore; VoxelFurnitureShop does not generate them. All button slots must be distinct **within their own screen** (0–26), and cannot overlap the preview. Both halves of a given button invoke the same action. Changing a currency's slots does not require editing the Java code.
 
-There is **no separate currency-selection or confirmation GUI**, and no navigation/back buttons. The previous `purchase-ui.selection`, `purchase-ui.confirmation`, `purchase-ui.glyphs` and `show-button-items` keys are no longer used; remove them when upgrading from an earlier PR #24 build.
+If a player lacks funds, `messages.insufficient-funds.currencies.<id>` is used when defined; otherwise `messages.insufficient-funds.default` is used. All texts support `<price>` (or `<amount>`), `<currency>`, and `<furniture>` placeholders and legacy `&` colors. Currency IDs are matched case-insensitively.
+
+When confirming any currency, the server checks the showroom instance, nearby range, **current currency price**, provider identity, balance, and inventory room before withdrawing. It delivers one VoxelCore furniture item; unexpected delivery failure triggers a refund attempt and logs failed refunds. Multi-clicks on either half of a button cannot charge twice. The currency-choice GUI has no cancel button painted in the supplied texture; ESC closes it.
+
+`/vfs reload` validates all UI slot lists and rejects collisions. Older `purchase-ui.glyphs`, `purchase-ui.selection`, `purchase-ui.confirmation`, and `show-button-items` keys are obsolete. No packet plugins or third-party GUI frameworks are needed.
 
 ## Config
 
