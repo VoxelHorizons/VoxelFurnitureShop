@@ -7,7 +7,6 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.math.BigDecimal;
-import java.util.Locale;
 
 /**
  * Resolves currency IDs against registered VaultUnlocked and legacy Vault services.
@@ -82,10 +81,10 @@ public final class ShopEconomy {
             if (amount == null || amount.signum() < 0) return false;
             int precision = economy.fractionalDigits();
             if (precision >= 0 && amount.stripTrailingZeros().scale() > precision) return false;
+            // Legacy Vault uses doubles. Refuse unsafe-size or rounded charges.
+            if (amount.compareTo(BigDecimal.valueOf(9007199254740991L)) > 0) return false;
             double value = amount.doubleValue();
-            // Avoid charges with non-finite or lossy integer conversion.
-            return Double.isFinite(value) && (amount.scale() > 0
-                    || amount.compareTo(BigDecimal.valueOf(9007199254740991L)) <= 0);
+            return Double.isFinite(value) && BigDecimal.valueOf(value).compareTo(amount) == 0;
         }
 
         @Override public boolean affordable(Player player, BigDecimal amount) {
@@ -113,6 +112,7 @@ public final class ShopEconomy {
             net.milkbowl.vault2.economy.Economy provider = service.getProvider();
             // Resolve case-insensitively while retaining the provider's actual
             // registered key for balances and transactions.
+            if (provider.currencies() == null) return null;
             for (String registered : provider.currencies()) {
                 if (registered != null && registered.equalsIgnoreCase(requested)
                         && provider.hasCurrency(registered)) {

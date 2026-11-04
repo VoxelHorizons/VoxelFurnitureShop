@@ -118,6 +118,9 @@ public final class FurniturePricing {
     }
 
     public static String format(BigDecimal amount) {
-        return new DecimalFormat("#,##0.######", DecimalFormatSymbols.getInstance(Locale.US)).format(amount);
+        DecimalFormat formatter = new DecimalFormat("#,##0", DecimalFormatSymbols.getInstance(Locale.US));
+        formatter.setMaximumFractionDigits(Math.max(0, amount.scale()));
+        formatter.setRoundingMode(java.math.RoundingMode.UNNECESSARY);
+        return formatter.format(amount);
     }
 }
