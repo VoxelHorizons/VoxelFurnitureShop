@@ -160,7 +160,7 @@ public final class ShopPurchaseService implements Listener {
         // Mirrors VoxelCore's GUI-item shorthand: voxel:ui/blank -> voxel:ui-blank.
         // Render-only abstract definitions are valid for UI buttons, but cannot
         // become purchasable stock because only the real furniture ID is delivered.
-        final ContentID id;
+        ContentID id;
         try {
             id = ContentID.parse(reference, "voxel");
         } catch (IllegalArgumentException invalidPath) {
