@@ -33,8 +33,11 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
-      - name: Install VoxelCore
-        run: mvn -B -f VoxelCore/pom.xml install -DskipTests
+      - name: Install VoxelCore dependencies for furniture shop
+        # Only common/pack/plugin are needed. Building the full reactor pulls in
+        # unrelated version adapters and the Geyser extension, which can fail on
+        # unavailable third-party snapshots even when this plugin is healthy.
+        run: mvn -B -f VoxelCore/pom.xml -pl voxelcore-plugin -am install -DskipTests
       - name: Install VoxelFurniture
         run: mvn -B -f VoxelFurniture/pom.xml install -DskipTests
       - name: Verify VoxelFurnitureShop

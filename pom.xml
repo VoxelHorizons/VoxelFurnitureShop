@@ -22,9 +22,20 @@
             <id>spigot-repo</id>
             <url>https://hub.spigotmc.org/nexus/content/groups/public/</url>
         </repository>
+        <repository>
+            <id>codemc-creatorfromhell</id>
+            <url>https://repo.codemc.io/repository/creatorfromhell/</url>
+        </repository>
     </repositories>
 
     <dependencies>
+        <!-- The original Vault API and VaultUnlocked's currency-aware API are supported. -->
+        <dependency>
+            <groupId>net.milkbowl.vault</groupId>
+            <artifactId>VaultUnlockedAPI</artifactId>
+            <version>2.20</version>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>org.voxelhorizons</groupId>
             <artifactId>voxelcore-common</artifactId>

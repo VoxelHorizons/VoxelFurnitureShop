@@ -5,6 +5,7 @@ api-version: '1.13'
 author: VoxelHorizons
 description: Recorded, rotating furniture showroom layouts for VoxelFurniture.
 depend: [VoxelCore, VoxelFurniture]
+softdepend: [Vault]
 commands:
   vfshop:
     description: Manage recorded furniture showrooms.

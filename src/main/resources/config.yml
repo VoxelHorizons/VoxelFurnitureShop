@@ -7,6 +7,13 @@ rotation:
   restock-delay-ticks: 80
   reopen-delay-ticks: 20
   avoid-current-variant: true
+economy:
+  # Default currency for legacy numeric worth: 250.
+  default-currency: coins
+  # Original Vault exposes one unnamed currency; this aliases its ID.
+  # Set to "" to route even this ID through VaultUnlocked.
+  legacy-currency: coins
+
 tooltip:
   enabled: true
   tooltip: default
@@ -15,7 +22,122 @@ tooltip:
   max-distance: 5.0
   check-interval-ticks: 5
   title: "&f<furniture>"
-  available-line: "&6<furniture_value> &f:shop_coin:"
+  # <furniture_prices> includes every configured purchase currency.
+  available-line: "<furniture_prices>"
+  # Default display for any named currency without an override.
+  currency-format: "&6<amount> &f<currency>"
+  currency-formats:
+    coins: "&6<amount> &f:shop_coin:"
+  currency-separator: " &7or "
   unavailable-line: "&6Price unavailable &f:shop_coin:"
   sale-line: "&f:shop_mouse: &7Click to Buy"
   not-for-sale-line: "&f:shop_mouse: &7Not for sale"
+
+# Both purchasing GUIs use a single inventory row (9 slots) on Java and
+# Bedrock. Your VoxelCore font glyph draws the artwork; slots 0–8 are the
+# only clickable top-inventory hitboxes.
+# Original confirmation GUI; used for all priced furniture.
+# With multiple available currencies, green opens the optional choice GUI below.
+purchase-ui:
+  title: ":offset_-8::furniture_shop::offset_8:&rPurchase Furniture"
+  button-item: "voxel:ui/blank"
+  preview-slot: 4
+  cancel-slots: [1, 2]
+  purchase-slots: [6, 7]
+
+  # Human-readable labels. <currency> uses these; <currency_id> is the raw ID.
+  currency-labels:
+    coins: "Coins"
+    tokens: "Tokens"
+
+  # Every inventory item's visible text is editable.
+  # <furniture>, <item>, <item_id>, <price>/<amount>,
+  # <currency>, <currency_id>, <currencies> are supported.
+  # <original_name> retains the model item's current display name.
+  # <original_lore> preserves the actual model item's existing lore.
+  # Empty lore [] removes it. Setting display-name: "" hides the name.
+  text:
+    preview:
+      display-name: "<original_name>"
+      lore: ["<original_lore>"]
+    cancel:
+      display-name: "&cCancel"
+      lore: []
+    purchase:
+      display-name: "&aBuy for <price> <currency>"
+      lore:
+        - "&7Click to purchase <furniture>"
+    choose-currency:
+      display-name: "&aChoose payment currency"
+      lore:
+        - "&7Choose how to pay for <furniture>"
+    currency-selection:
+      preview:
+        display-name: "<original_name>"
+        lore: ["<original_lore>"]
+      available:
+        display-name: "&aBuy for <price> <currency>"
+        lore:
+          - "&7Click to purchase <furniture>"
+      unavailable:
+        display-name: "&c<currency> unavailable"
+        lore:
+          - "&7This payment method is currently unavailable"
+      # Optional currency-specific text overrides. Only include changed fields:
+      currencies:
+        # coins:
+        #   display-name: "&6Pay <price> Coins"
+        #   lore: ["&7Click to buy with Coins"]
+        # tokens:
+        #   display-name: "&bPay <price> Tokens"
+
+  # Only opened when the item offers more than one available currency.
+  # The supplied artwork has a Coins button on the left and Tokens on the right.
+  # Add more named currencies here if your economy provider exposes them.
+  currency-selection:
+    title: ":offset_-8::furniture_shop_currency::offset_8:&rSelect Currency"
+    button-item: "voxel:ui/blank"
+    preview-slot: 4
+    currencies:
+      coins: [1, 2]
+      tokens: [6, 7]
+
+# Per-currency insufficient-balance messages. Other currency IDs use default.
+# <price>/<amount>, <currency> and <furniture> can be used in every message.
+messages:
+  # Set any message to "" to suppress it. Supports & colors and VoxelCore glyphs.
+  # Common placeholders: <furniture>, <item>, <item_id>,
+  # <price>/<amount>, <currency>, <currency_id>.
+  # For specific messages: <error>, <missing_currencies>, <currencies>.
+  invalid-price: "&cThis furniture has an invalid price: <error>"
+  purchase-unavailable: "&cFurniture purchasing is currently unavailable."
+  no-prices: "&cThis furniture has no purchase prices."
+  missing-currency-buttons: "&cThe shop has no buttons configured for: <missing_currencies>"
+  currency-provider-unavailable: "&cThe <currency> currency provider is unavailable."
+  prices-removed: "&cThis furniture no longer has any configured prices."
+  currency-selection-unavailable: "&cCurrency selection is currently unavailable."
+  display-unavailable: "&cThat showroom display is no longer available."
+  furniture-unavailable: "&cThis furniture is unavailable."
+  price-changed: "&cThe price changed. Open the shop again."
+  provider-changed: "&cCurrency provider changed. Open the shop again."
+  inventory-full: "&cMake an empty inventory slot before purchasing."
+  payment-declined: "&cThe payment was declined by your economy provider."
+  payment-failed: "&cPayment could not be completed. Contact staff if your balance changed."
+  delivery-failed: "&cDelivery failed. A refund was attempted; contact staff if needed."
+  purchase-success: "&aPurchased <furniture> for <price> <currency>."
+  # Optional notices. Leave blank to display nothing.
+  purchase-ui-opened: ""
+  currency-selection-opened: ""
+  cancelled: ""
+  # Optional overrides for ANY message key, based on selected payment currency.
+  currency-overrides: {}
+  # Example:
+  # currency-overrides:
+  #   tokens:
+  #     purchase-success: "&bYou bought <furniture> for <price> Tokens!"
+  # A currency-specific insufficient-funds message overrides 'default'.
+  insufficient-funds:
+    default: "&cYou need <price> <currency> to buy <furniture>."
+    currencies:
+      coins: "&cYou need <price> Coins to buy <furniture>."
+      tokens: "&cYou need <price> Tokens to buy <furniture>."
