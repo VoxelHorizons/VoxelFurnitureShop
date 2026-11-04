@@ -33,11 +33,9 @@ tooltip:
   sale-line: "&f:shop_mouse: &7Click to Buy"
   not-for-sale-line: "&f:shop_mouse: &7Not for sale"
 
-# A native 3-row inventory is used on both Java and Bedrock. Your custom
-# VoxelCore font glyph supplies the visible background; the actions remain
-# actual Bukkit inventory slot hitboxes (0-26), not arbitrary pixel regions.
-# A single 27-slot screen. The title includes your authored VoxelCore
-# background glyph; the two button groups are VoxelCore blank render items.
+# Both purchasing GUIs use a single inventory row (9 slots) on Java and
+# Bedrock. Your VoxelCore font glyph draws the artwork; slots 0–8 are the
+# only clickable top-inventory hitboxes.
 # Original confirmation GUI; used for all priced furniture.
 # With multiple available currencies, green opens the optional choice GUI below.
 purchase-ui:
