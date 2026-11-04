@@ -125,6 +125,30 @@ rather than spawning a floating archway or leaving the shop closed mid-restock.
 This change uses your existing saved `variant require` relationships and
 does not modify stored snapshots.
 
+### Fair rotation of compatible combinations
+
+`rotation.avoid-current-variant: true` avoids repeating the **entire showroom
+layout**, rather than forcing every individual region to pick the other variant.
+Each candidate draws independently from the recorded variants, and only
+**complete, requirement-compatible layouts** are accepted. This prevents two
+unrelated two-option regions from cycling in lockstep. A bounded randomized
+search with a fallback handles heavily constrained layouts without enumerating
+every possible combination on the server's main thread.
+
+For example, the 4 November archive defines Left = Cherry Bedroom / Cherry
+Park, Right = Campsite Ground Hole / Deluxe Bedroom, Rear = Birch Commercial
+Kitchen / Dark Oak Kitchen, and Main = Cherry Bedroom Entrance **only**. Since
+that Main variant is reserved for Cherry Bedroom, there are **four compatible
+combinations**: Cherry Bedroom plus either Right variant and either Rear variant.
+Every one of those four combinations can now appear, including Campsite Ground
+Hole with Cherry Bedroom. Cherry Park cannot rotate until an alternative Main
+snapshot without the bedroom archway is recorded. After that, Park can pair
+with its plain entrance while Bedroom retains the exclusive cherry archway.
+
+If only one compatible layout exists, avoid-current is a preference and the
+planner safely repeats it rather than failing. This setting does not add or
+delete saved variants and does not bypass required-variant exclusivity.
+
 `/vfs variant apply` remains a direct editing/preview command: it applies the
 requested snapshot and its forward dependencies but does not restock every other
 region. Use a full rotation to verify cross-region exclusivity in the live showroom.
