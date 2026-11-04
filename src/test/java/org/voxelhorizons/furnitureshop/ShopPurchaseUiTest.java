@@ -30,7 +30,7 @@ public class ShopPurchaseUiTest {
         YamlConfiguration config = new YamlConfiguration();
         config.set("purchase-ui.title", ":my_shop:");
         config.set("purchase-ui.button-item", "voxel:cancel_blank");
-        config.set("purchase-ui.preview-slot", 13);
+        config.set("purchase-ui.preview-slot", 3);
         config.set("purchase-ui.cancel-slots", Arrays.asList(0, 1));
         config.set("purchase-ui.purchase-slots", Arrays.asList(7, 8));
         config.set("purchase-ui.currency-selection.title", ":my_currency_shop:");
@@ -44,7 +44,7 @@ public class ShopPurchaseUiTest {
         assertEquals(":my_currency_shop:", ui.currencyTitle());
         assertEquals("voxel:cancel_blank", ui.buttonItem());
         assertEquals("voxel:currency_blank", ui.currencyButtonItem());
-        assertEquals(13, ui.previewSlot());
+        assertEquals(3, ui.previewSlot());
         assertEquals(Arrays.asList(0, 1), ui.cancelSlots());
         assertEquals(Arrays.asList(7, 8), ui.purchaseSlots());
         assertTrue(ui.canDisplay(Arrays.asList("GEMS", "credits")));
@@ -85,7 +85,28 @@ public class ShopPurchaseUiTest {
     @Test(expected = IllegalArgumentException.class)
     public void rejectsOutOfRangeSlots() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.currency-selection.currencies.tokens", Arrays.asList(6, 27));
+        config.set("purchase-ui.currency-selection.currencies.tokens", Arrays.asList(6, 9));
+        ShopPurchaseUi.fromConfig(config);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsNineAsPrimaryPreviewSlot() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("purchase-ui.preview-slot", 9);
+        ShopPurchaseUi.fromConfig(config);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsNineAsPurchaseButtonSlot() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("purchase-ui.purchase-slots", Arrays.asList(6, 9));
+        ShopPurchaseUi.fromConfig(config);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsNineAsCurrencyPreviewSlot() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("purchase-ui.currency-selection.preview-slot", 9);
         ShopPurchaseUi.fromConfig(config);
     }
 
