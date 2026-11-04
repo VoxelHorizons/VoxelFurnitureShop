@@ -31,8 +31,6 @@ import java.util.logging.Level;
 
 /** Checkout is server-authoritative; no UI item, currency ID or quote is trusted. */
 public final class ShopPurchaseService implements Listener {
-    private static final String TITLE = ChatColor.DARK_GRAY + "Furniture Purchase";
-    private static final int OPTIONS_PER_PAGE = 7;
 
     private final VoxelFurnitureShop plugin;
     private final ShopService shops;
@@ -90,44 +88,65 @@ public final class ShopPurchaseService implements Listener {
         return result;
     }
 
+    /** Resolve glyph aliases before opening, so modern Paper doesn't flash an unresolved title. */
+    private static String title(ShopPurchaseUi ui, boolean confirmation) {
+        String legacy = ChatColor.translateAlternateColorCodes('&', ui.title(confirmation));
+        return VoxelCore.getInstance().getTextPlaceholderService().resolve(legacy);
+    }
+
     private void showOptions(Player player, UUID instanceId, ItemStack preview,
                              FurniturePricing price, int requestedPage) {
+        ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(plugin.getConfig());
         List<String> currencies = available(price);
         if (currencies.isEmpty()) {
             player.sendMessage(ChatColor.RED + "None of this furniture's currencies is supported by an active economy provider.");
             return;
         }
-        int pages = (currencies.size() + OPTIONS_PER_PAGE - 1) / OPTIONS_PER_PAGE;
+        int capacity = ui.currencySlots().size();
+        int pages = (currencies.size() + capacity - 1) / capacity;
         int page = Math.max(0, Math.min(requestedPage, pages - 1));
-        MenuHolder menu = new MenuHolder(player.getUniqueId(), instanceId, page, null, null, null);
-        Inventory inv = Bukkit.createInventory(menu, 27, TITLE);
+        boolean hasNext = page + 1 < pages;
+        MenuHolder menu = new MenuHolder(player.getUniqueId(), instanceId, page,
+                null, null, null, ui, hasNext);
+        Inventory inv = Bukkit.createInventory(menu, 27, title(ui, false));
         menu.inventory = inv;
-        inv.setItem(4, preview(preview));
-        int start = page * OPTIONS_PER_PAGE, count = Math.min(OPTIONS_PER_PAGE, currencies.size() - start);
+        inv.setItem(ui.previewSlot(), preview(preview));
+        int start = page * capacity;
+        int count = Math.min(capacity, currencies.size() - start);
         for (int i = 0; i < count; i++) {
             String currency = currencies.get(start + i);
-            int slot = count == 1 ? 13 : count == 2 ? (i == 0 ? 11 : 15) : 10 + i;
+            int slot = ui.currencySlots().get(i);
             menu.currencySlots.put(slot, currency);
-            inv.setItem(slot, icon(Material.GOLD_INGOT, ChatColor.GOLD + "Buy for "
-                    + FurniturePricing.format(price.cost(currency)) + " " + label(currency),
-                    ChatColor.GRAY + "Click to choose " + label(currency)));
+            if (ui.showButtonItems()) {
+                inv.setItem(slot, icon(Material.GOLD_INGOT, ChatColor.GOLD + "Buy for "
+                        + FurniturePricing.format(price.cost(currency)) + " " + label(currency),
+                        ChatColor.GRAY + "Click to choose " + label(currency)));
+            }
         }
-        if (page > 0) inv.setItem(18, icon(Material.ARROW, ChatColor.YELLOW + "Previous page"));
-        inv.setItem(22, icon(Material.BARRIER, ChatColor.RED + "Cancel"));
-        if (page + 1 < pages) inv.setItem(26, icon(Material.ARROW, ChatColor.YELLOW + "Next page"));
+        if (ui.showButtonItems()) {
+            if (page > 0) inv.setItem(ui.selectPrevious(),
+                    icon(Material.ARROW, ChatColor.YELLOW + "Previous page"));
+            inv.setItem(ui.selectCancel(), icon(Material.BARRIER, ChatColor.RED + "Cancel"));
+            if (hasNext) inv.setItem(ui.selectNext(),
+                    icon(Material.ARROW, ChatColor.YELLOW + "Next page"));
+        }
         player.openInventory(inv);
     }
 
     private void showConfirmation(Player player, UUID instanceId, ItemStack preview,
                                   int page, String currency, BigDecimal price, ShopEconomy.Payment payment) {
+        ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(plugin.getConfig());
         MenuHolder menu = new MenuHolder(player.getUniqueId(), instanceId, page,
-                currency, price, payment);
-        Inventory inv = Bukkit.createInventory(menu, 27, TITLE);
+                currency, price, payment, ui, false);
+        Inventory inv = Bukkit.createInventory(menu, 27, title(ui, true));
         menu.inventory = inv;
-        inv.setItem(4, preview(preview));
-        inv.setItem(11, icon(Material.EMERALD_BLOCK, ChatColor.GREEN + "Confirm purchase",
-                ChatColor.GRAY + "Pay " + FurniturePricing.format(price) + " " + label(currency)));
-        inv.setItem(15, icon(Material.REDSTONE_BLOCK, ChatColor.RED + "Back"));
+        inv.setItem(ui.previewSlot(), preview(preview));
+        if (ui.showButtonItems()) {
+            inv.setItem(ui.confirmPurchase(), icon(Material.EMERALD_BLOCK, ChatColor.GREEN + "Confirm purchase",
+                    ChatColor.GRAY + "Pay " + FurniturePricing.format(price) + " " + label(currency)));
+            inv.setItem(ui.confirmBack(), icon(Material.REDSTONE_BLOCK, ChatColor.RED + "Back"));
+            inv.setItem(ui.confirmCancel(), icon(Material.BARRIER, ChatColor.RED + "Cancel"));
+        }
         player.openInventory(inv);
     }
 
@@ -162,11 +181,16 @@ public final class ShopPurchaseService implements Listener {
     }
 
     private void handleClick(Player player, MenuHolder menu, int slot) {
+        ShopPurchaseUi ui = menu.ui;
         if (menu.currency == null) {
-            if (slot == 22) { player.closeInventory(); return; }
-            if (slot == 18 && menu.page > 0) { reopen(player, menu.instanceId, menu.page - 1); return; }
-            if (slot == 26 && menu.inventory.getItem(26) != null) {
-                reopen(player, menu.instanceId, menu.page + 1); return;
+            if (slot == ui.selectCancel()) { player.closeInventory(); return; }
+            if (slot == ui.selectPrevious() && menu.page > 0) {
+                reopen(player, menu.instanceId, menu.page - 1);
+                return;
+            }
+            if (slot == ui.selectNext() && menu.hasNext) {
+                reopen(player, menu.instanceId, menu.page + 1);
+                return;
             }
             String currency = menu.currencySlots.get(slot);
             if (currency == null) return;
@@ -178,18 +202,23 @@ public final class ShopPurchaseService implements Listener {
                 price = pricing(instance.definitionId());
                 item = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId());
             } catch (RuntimeException invalid) {
-                player.closeInventory(); player.sendMessage(ChatColor.RED + "This furniture is unavailable."); return;
+                player.closeInventory();
+                player.sendMessage(ChatColor.RED + "This furniture is unavailable.");
+                return;
             }
             if (!price.offers(currency)) { player.closeInventory(); return; }
             ShopEconomy.Payment payment = economy.resolve(currency);
             if (payment == null) {
-                player.closeInventory(); player.sendMessage(ChatColor.RED + "The selected currency is unavailable."); return;
+                player.closeInventory();
+                player.sendMessage(ChatColor.RED + "The selected currency is unavailable.");
+                return;
             }
             showConfirmation(player, instance.id(), item, menu.page, currency, price.cost(currency), payment);
             return;
         }
-        if (slot == 15) { reopen(player, menu.instanceId, menu.page); return; }
-        if (slot == 11 && !menu.confirmAttempted) {
+        if (slot == ui.confirmCancel()) { player.closeInventory(); return; }
+        if (slot == ui.confirmBack()) { reopen(player, menu.instanceId, menu.page); return; }
+        if (slot == ui.confirmPurchase() && !menu.confirmAttempted) {
             menu.confirmAttempted = true;
             purchase(player, menu);
         }
@@ -304,18 +333,23 @@ public final class ShopPurchaseService implements Listener {
         final String currency;
         final BigDecimal quoted;
         final ShopEconomy.Payment payment;
+        final ShopPurchaseUi ui;
+        final boolean hasNext;
         final Map<Integer, String> currencySlots = new LinkedHashMap<Integer, String>();
         boolean confirmAttempted;
         Inventory inventory;
 
-        MenuHolder(UUID owner, UUID instanceId, int page,
-                   String currency, BigDecimal quoted, ShopEconomy.Payment payment) {
+        MenuHolder(UUID owner, UUID instanceId, int page, String currency,
+                   BigDecimal quoted, ShopEconomy.Payment payment,
+                   ShopPurchaseUi ui, boolean hasNext) {
             this.owner = owner;
             this.instanceId = instanceId;
             this.page = page;
             this.currency = currency;
             this.quoted = quoted;
             this.payment = payment;
+            this.ui = ui;
+            this.hasNext = hasNext;
         }
 
         @Override public Inventory getInventory() { return inventory; }
