@@ -1,6 +1,5 @@
 package org.voxelhorizons.furnitureshop;
 
-import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -13,109 +12,133 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.plugin.RegisteredServiceProvider;
 import org.voxelhorizons.VoxelCore;
 import org.voxelhorizons.content.ContentID;
-import org.voxelhorizons.economy.VoxelCurrencyBridge;
 import org.voxelhorizons.furniture.model.FurnitureInstance;
 import org.voxelhorizons.furnitureshop.service.FurniturePricing;
-import org.voxelhorizons.furnitureshop.service.FurniturePricing.Currency;
+import org.voxelhorizons.furnitureshop.service.ShopEconomy;
 import org.voxelhorizons.furnitureshop.service.ShopService;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Level;
 
-/** Server-authoritative purchase menus; clients never supply item IDs or prices. */
+/** Checkout is server-authoritative; no UI item, currency ID or quote is trusted. */
 public final class ShopPurchaseService implements Listener {
     private static final String TITLE = ChatColor.DARK_GRAY + "Furniture Purchase";
+    private static final int OPTIONS_PER_PAGE = 7;
+
     private final VoxelFurnitureShop plugin;
     private final ShopService shops;
+    private final ShopEconomy economy;
 
     public ShopPurchaseService(VoxelFurnitureShop plugin, ShopService shops) {
         this.plugin = plugin;
         this.shops = shops;
+        this.economy = new ShopEconomy(plugin);
     }
 
-    /** Called only from a genuine right-click on an active showroom display. */
+    /** Called only for an active, non-fixture showroom furniture interaction. */
     public boolean tryOpen(Player player, FurnitureInstance instance) {
         if (instance == null || !shops.isActiveVariantFurniture(instance) || shops.canEdit(player)) return false;
         if (!near(player, instance)) return false;
         final FurniturePricing price;
         try { price = pricing(instance.definitionId()); }
-        catch (IllegalArgumentException exception) {
-            player.sendMessage(ChatColor.RED + "This furniture has an invalid price: " + exception.getMessage());
+        catch (IllegalArgumentException invalid) {
+            player.sendMessage(ChatColor.RED + "This furniture has an invalid price: " + invalid.getMessage());
             return true;
         }
         if (!price.available()) return false;
         try {
-            ItemStack item = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId());
-            show(player, instance.id(), item, price, null, null);
+            ItemStack preview = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId());
+            showOptions(player, instance.id(), preview, price, 0);
         } catch (RuntimeException exception) {
             plugin.getLogger().log(Level.WARNING, "Could not open furniture purchase menu", exception);
-            player.sendMessage(ChatColor.RED + "This furniture cannot be purchased right now.");
+            player.sendMessage(ChatColor.RED + "Furniture purchasing is currently unavailable.");
         }
         return true;
     }
 
     private FurniturePricing pricing(ContentID id) {
         return FurniturePricing.fromItem(
-                VoxelCore.getInstance().getItemManager().getDefinition(id).orElse(null));
+                VoxelCore.getInstance().getItemManager().getDefinition(id).orElse(null),
+                economy.defaultCurrency());
     }
 
     private boolean near(Player player, FurnitureInstance instance) {
         if (player.getWorld() != instance.location().getWorld()) return false;
         double configured = plugin.getConfig().getDouble("tooltip.max-distance", 5.0D);
         double range = Double.isFinite(configured) && configured > 0 ? configured : 5.0D;
-        // Allow the visual model to extend beyond the origin while menu is open.
         return player.getEyeLocation().distanceSquared(instance.location()) <= (range + 2.0D) * (range + 2.0D);
     }
 
-    private Economy coins() {
-        RegisteredServiceProvider<Economy> registered = Bukkit.getServicesManager().getRegistration(Economy.class);
-        return registered == null ? null : registered.getProvider();
+    private static String label(String id) {
+        return id.isEmpty() ? id : Character.toUpperCase(id.charAt(0)) + id.substring(1);
     }
 
-    private VoxelCurrencyBridge tokens() {
-        VoxelCurrencyBridge bridge = VoxelCore.getInstance().getCurrencyBridge();
-        return bridge != null && bridge.supports("tokens") ? bridge : null;
+    private List<String> available(FurniturePricing price) {
+        List<String> result = new ArrayList<String>();
+        for (String currency : price.amounts().keySet()) {
+            if (economy.resolve(currency) != null) result.add(currency);
+        }
+        return result;
     }
 
-    private void show(Player player, UUID instanceId, ItemStack preview,
-                      FurniturePricing pricing, Currency chosen, BigDecimal quoted) {
-        MenuHolder menu = new MenuHolder(player.getUniqueId(), instanceId, chosen, quoted);
+    private void showOptions(Player player, UUID instanceId, ItemStack preview,
+                             FurniturePricing price, int requestedPage) {
+        List<String> currencies = available(price);
+        if (currencies.isEmpty()) {
+            player.sendMessage(ChatColor.RED + "None of this furniture's currencies is supported by an active economy provider.");
+            return;
+        }
+        int pages = (currencies.size() + OPTIONS_PER_PAGE - 1) / OPTIONS_PER_PAGE;
+        int page = Math.max(0, Math.min(requestedPage, pages - 1));
+        MenuHolder menu = new MenuHolder(player.getUniqueId(), instanceId, page, null, null, null);
         Inventory inv = Bukkit.createInventory(menu, 27, TITLE);
         menu.inventory = inv;
-        ItemStack display = preview.clone();
-        display.setAmount(1);
-        inv.setItem(4, display);
-        if (chosen == null) {
-            if (pricing.offers(Currency.COINS)) {
-                inv.setItem(11, icon(Material.GOLD_INGOT, ChatColor.GOLD + "Buy for "
-                        + FurniturePricing.format(pricing.cost(Currency.COINS)) + " Coins",
-                        ChatColor.GRAY + "Click to pay with Coins"));
-            }
-            if (pricing.offers(Currency.TOKENS)) {
-                inv.setItem(15, icon(Material.EMERALD, ChatColor.LIGHT_PURPLE + "Buy for "
-                        + FurniturePricing.format(pricing.cost(Currency.TOKENS)) + " Tokens",
-                        ChatColor.GRAY + "Click to pay with Tokens"));
-            }
-            inv.setItem(22, icon(Material.BARRIER, ChatColor.RED + "Cancel"));
-        } else {
-            inv.setItem(11, icon(Material.EMERALD_BLOCK, ChatColor.GREEN + "Confirm purchase",
-                    ChatColor.GRAY + "Pay " + FurniturePricing.format(quoted) + " "
-                            + (chosen == Currency.COINS ? "Coins" : "Tokens")));
-            inv.setItem(15, icon(Material.REDSTONE_BLOCK, ChatColor.RED + "Back"));
+        inv.setItem(4, preview(preview));
+        int start = page * OPTIONS_PER_PAGE, count = Math.min(OPTIONS_PER_PAGE, currencies.size() - start);
+        for (int i = 0; i < count; i++) {
+            String currency = currencies.get(start + i);
+            int slot = count == 1 ? 13 : count == 2 ? (i == 0 ? 11 : 15) : 10 + i;
+            menu.currencySlots.put(slot, currency);
+            inv.setItem(slot, icon(Material.GOLD_INGOT, ChatColor.GOLD + "Buy for "
+                    + FurniturePricing.format(price.cost(currency)) + " " + label(currency),
+                    ChatColor.GRAY + "Click to choose " + label(currency)));
         }
+        if (page > 0) inv.setItem(18, icon(Material.ARROW, ChatColor.YELLOW + "Previous page"));
+        inv.setItem(22, icon(Material.BARRIER, ChatColor.RED + "Cancel"));
+        if (page + 1 < pages) inv.setItem(26, icon(Material.ARROW, ChatColor.YELLOW + "Next page"));
         player.openInventory(inv);
     }
 
-    private static ItemStack icon(Material material, String title, String... lore) {
+    private void showConfirmation(Player player, UUID instanceId, ItemStack preview,
+                                  int page, String currency, BigDecimal price, ShopEconomy.Payment payment) {
+        MenuHolder menu = new MenuHolder(player.getUniqueId(), instanceId, page,
+                currency, price, payment);
+        Inventory inv = Bukkit.createInventory(menu, 27, TITLE);
+        menu.inventory = inv;
+        inv.setItem(4, preview(preview));
+        inv.setItem(11, icon(Material.EMERALD_BLOCK, ChatColor.GREEN + "Confirm purchase",
+                ChatColor.GRAY + "Pay " + FurniturePricing.format(price) + " " + label(currency)));
+        inv.setItem(15, icon(Material.REDSTONE_BLOCK, ChatColor.RED + "Back"));
+        player.openInventory(inv);
+    }
+
+    private static ItemStack preview(ItemStack item) {
+        ItemStack copy = item.clone(); copy.setAmount(1); return copy;
+    }
+
+    private static ItemStack icon(Material material, String name, String... lore) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(title);
+        meta.setDisplayName(name);
         if (lore.length > 0) meta.setLore(Arrays.asList(lore));
         item.setItemMeta(meta);
         return item;
@@ -124,15 +147,14 @@ public final class ShopPurchaseService implements Listener {
     @EventHandler
     public void onClick(InventoryClickEvent event) {
         if (!(event.getInventory().getHolder() instanceof MenuHolder)) return;
-        event.setCancelled(true); // Includes bottom inventory, shift-click, number keys and offhand swaps.
+        event.setCancelled(true); // Protect both inventories, shift-clicks and number-key swaps.
         if (!(event.getWhoClicked() instanceof Player)) return;
         Player player = (Player) event.getWhoClicked();
         MenuHolder menu = (MenuHolder) event.getInventory().getHolder();
         if (!menu.owner.equals(player.getUniqueId()) || event.getRawSlot() < 0
                 || event.getRawSlot() >= event.getInventory().getSize()) return;
         final int slot = event.getRawSlot();
-        // Bukkit forbids opening/closing inventories from within InventoryClickEvent.
-        // Recheck the exact top inventory next tick, also preventing double charges.
+        // Open/close actions must run after Bukkit finishes InventoryClickEvent.
         plugin.getServer().getScheduler().runTask(plugin, () -> {
             if (player.isOnline() && player.getOpenInventory().getTopInventory() == menu.inventory)
                 handleClick(player, menu, slot);
@@ -140,47 +162,63 @@ public final class ShopPurchaseService implements Listener {
     }
 
     private void handleClick(Player player, MenuHolder menu, int slot) {
-        if (slot == 22 && menu.chosen == null) { player.closeInventory(); return; }
-        if (slot == 15 && menu.chosen != null) {
-            reopen(player, menu.instanceId, null, null); return;
+        if (menu.currency == null) {
+            if (slot == 22) { player.closeInventory(); return; }
+            if (slot == 18 && menu.page > 0) { reopen(player, menu.instanceId, menu.page - 1); return; }
+            if (slot == 26 && menu.inventory.getItem(26) != null) {
+                reopen(player, menu.instanceId, menu.page + 1); return;
+            }
+            String currency = menu.currencySlots.get(slot);
+            if (currency == null) return;
+            FurnitureInstance instance = validTarget(player, menu.instanceId);
+            if (instance == null) return;
+            FurniturePricing price;
+            ItemStack item;
+            try {
+                price = pricing(instance.definitionId());
+                item = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId());
+            } catch (RuntimeException invalid) {
+                player.closeInventory(); player.sendMessage(ChatColor.RED + "This furniture is unavailable."); return;
+            }
+            if (!price.offers(currency)) { player.closeInventory(); return; }
+            ShopEconomy.Payment payment = economy.resolve(currency);
+            if (payment == null) {
+                player.closeInventory(); player.sendMessage(ChatColor.RED + "The selected currency is unavailable."); return;
+            }
+            showConfirmation(player, instance.id(), item, menu.page, currency, price.cost(currency), payment);
+            return;
         }
-        if (menu.chosen == null) {
-            Currency selected = slot == 11 ? Currency.COINS : slot == 15 ? Currency.TOKENS : null;
-            if (selected == null) return;
-            FurnitureInstance instance = find(menu.instanceId);
-            if (instance == null || !shops.isActiveVariantFurniture(instance) || !near(player, instance)) {
-                player.closeInventory(); player.sendMessage(ChatColor.RED + "That display is no longer available."); return;
-            }
-            FurniturePricing pricing;
-            try { pricing = pricing(instance.definitionId()); }
-            catch (IllegalArgumentException invalid) {
-                player.closeInventory(); player.sendMessage(ChatColor.RED + "This furniture has an invalid price."); return;
-            }
-            if (!pricing.offers(selected)) return;
-            ItemStack preview;
-            try { preview = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId()); }
-            catch (RuntimeException error) {
-                player.closeInventory(); player.sendMessage(ChatColor.RED + "Furniture item is unavailable."); return;
-            }
-            show(player, instance.id(), preview, pricing, selected, pricing.cost(selected));
-        } else if (slot == 11) {
+        if (slot == 15) { reopen(player, menu.instanceId, menu.page); return; }
+        if (slot == 11 && !menu.confirmAttempted) {
+            menu.confirmAttempted = true;
             purchase(player, menu);
         }
     }
 
-    private void reopen(Player player, UUID id, Currency currency, BigDecimal quoted) {
-        FurnitureInstance instance = find(id);
-        if (instance == null || !shops.isActiveVariantFurniture(instance) || !near(player, instance)) {
-            player.closeInventory(); player.sendMessage(ChatColor.RED + "That display is no longer available."); return;
-        }
+    private void reopen(Player player, UUID id, int page) {
+        FurnitureInstance instance = validTarget(player, id);
+        if (instance == null) return;
         try {
             FurniturePricing price = pricing(instance.definitionId());
             if (!price.available()) { player.closeInventory(); return; }
-            show(player, id, VoxelCore.getInstance().getItemManager().createItem(instance.definitionId()),
-                    price, currency, quoted);
-        } catch (RuntimeException exception) {
+            showOptions(player, id, VoxelCore.getInstance().getItemManager().createItem(instance.definitionId()),
+                    price, page);
+        } catch (RuntimeException error) {
             player.closeInventory(); player.sendMessage(ChatColor.RED + "Furniture item is unavailable.");
         }
+    }
+
+    private FurnitureInstance validTarget(Player player, UUID instanceId) {
+        FurnitureInstance instance = null;
+        for (FurnitureInstance placed : shops.layouts().placedFurniture()) {
+            if (placed.id().equals(instanceId)) { instance = placed; break; }
+        }
+        if (instance == null || !shops.isActiveVariantFurniture(instance) || !near(player, instance)) {
+            player.closeInventory();
+            player.sendMessage(ChatColor.RED + "That showroom display is no longer available.");
+            return null;
+        }
+        return instance;
     }
 
     @EventHandler
@@ -188,100 +226,96 @@ public final class ShopPurchaseService implements Listener {
         if (event.getInventory().getHolder() instanceof MenuHolder) event.setCancelled(true);
     }
 
-    private FurnitureInstance find(UUID instanceId) {
-        for (FurnitureInstance instance : shops.layouts().placedFurniture())
-            if (instance.id().equals(instanceId)) return instance;
-        return null;
-    }
-
     private void purchase(Player player, MenuHolder menu) {
-        // Check the actual instance and price again; a rotation or content reload
-        // must never charge for a stale display or an outdated quote.
-        FurnitureInstance instance = find(menu.instanceId);
-        if (instance == null || !shops.isActiveVariantFurniture(instance) || !near(player, instance)) {
-            player.closeInventory(); player.sendMessage(ChatColor.RED + "That display is no longer available."); return;
-        }
-        final FurniturePricing pricing;
+        // Every quote is revalidated against the current showroom, content,
+        // provider registration and price before money leaves an account.
+        FurnitureInstance instance = validTarget(player, menu.instanceId);
+        if (instance == null) return;
+        final FurniturePricing prices;
         final ItemStack item;
         try {
-            pricing = pricing(instance.definitionId());
+            prices = pricing(instance.definitionId());
             item = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId());
-        } catch (RuntimeException exception) {
+        } catch (RuntimeException invalid) {
             player.closeInventory(); player.sendMessage(ChatColor.RED + "This furniture is unavailable."); return;
         }
-        if (!pricing.offers(menu.chosen) || pricing.cost(menu.chosen).compareTo(menu.quoted) != 0) {
-            player.closeInventory(); player.sendMessage(ChatColor.RED + "The price changed. Please open the shop again."); return;
+        BigDecimal current = prices.cost(menu.currency);
+        if (current == null || current.compareTo(menu.quoted) != 0) {
+            player.closeInventory(); player.sendMessage(ChatColor.RED + "Price changed. Open the shop again."); return;
         }
-        // A single empty slot guarantees room for exactly one item; do not take
-        // payment and drop a valuable purchase on the showroom floor.
+        ShopEconomy.Payment payment = economy.resolve(menu.currency);
+        if (payment == null || !menu.payment.sameProvider(payment)) {
+            player.closeInventory(); player.sendMessage(ChatColor.RED + "Currency provider changed. Open the shop again."); return;
+        }
         if (player.getInventory().firstEmpty() < 0) {
             player.sendMessage(ChatColor.RED + "Make an empty inventory slot before purchasing."); return;
         }
         final BigDecimal amount = menu.quoted;
-        if (menu.chosen == Currency.COINS) {
-            Economy economy = coins();
-            if (economy == null) { player.sendMessage(ChatColor.RED + "Coins payments are currently unavailable."); return; }
-            if (!Double.isFinite(amount.doubleValue()) || amount.doubleValue() > 0
-                    && !economy.has(player, amount.doubleValue())) {
-                player.sendMessage(ChatColor.RED + "You do not have enough Coins."); return;
+        try {
+            if (!payment.affordable(player, amount)) {
+                player.sendMessage(ChatColor.RED + "Insufficient " + label(menu.currency) + " or invalid currency precision.");
+                return;
             }
-            if (amount.signum() > 0 && !economy.withdrawPlayer(player, amount.doubleValue()).transactionSuccess()) {
-                player.sendMessage(ChatColor.RED + "The Coins payment failed."); return;
+            if (!payment.withdraw(player, amount)) {
+                player.sendMessage(ChatColor.RED + "The payment was declined by your economy provider.");
+                return;
             }
-        } else {
-            VoxelCurrencyBridge bridge = tokens();
-            if (bridge == null) { player.sendMessage(ChatColor.RED + "Tokens payments are currently unavailable."); return; }
-            if (bridge.balance(player.getUniqueId(), "tokens").compareTo(amount) < 0) {
-                player.sendMessage(ChatColor.RED + "You do not have enough Tokens."); return;
-            }
-            if (amount.signum() > 0 && !bridge.transaction("withdraw", player.getUniqueId(), "tokens", amount).transactionSuccess()) {
-                player.sendMessage(ChatColor.RED + "The Tokens payment failed."); return;
-            }
+        } catch (RuntimeException failure) {
+            plugin.getLogger().log(Level.SEVERE, "Currency provider failed during checkout for " + player.getUniqueId()
+                    + " (" + menu.currency + "). Check for a partially completed transaction.", failure);
+            player.sendMessage(ChatColor.RED + "Payment could not be completed. Contact staff if your balance changed.");
+            return;
         }
 
         try {
             item.setAmount(1);
             Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
             if (!leftovers.isEmpty()) {
-                refund(player, menu.chosen, amount);
-                player.sendMessage(ChatColor.RED + "Inventory delivery failed. A refund was attempted; contact staff if needed.");
+                refund(player, payment, amount);
+                player.sendMessage(ChatColor.RED + "Inventory delivery failed. Refund attempted; contact staff if needed.");
                 return;
             }
-        } catch (RuntimeException exception) {
-            refund(player, menu.chosen, amount);
-            plugin.getLogger().log(Level.SEVERE, "Furniture delivery failed after withdrawal for " + player.getUniqueId(), exception);
-            player.sendMessage(ChatColor.RED + "Delivery failed. A refund was attempted; contact staff if needed.");
+        } catch (RuntimeException failure) {
+            refund(player, payment, amount);
+            plugin.getLogger().log(Level.SEVERE, "Furniture delivery failed after withdrawal for " + player.getUniqueId(), failure);
+            player.sendMessage(ChatColor.RED + "Delivery failed. Refund attempted; contact staff if needed.");
             return;
         }
         player.closeInventory();
         player.sendMessage(ChatColor.GREEN + "Purchased furniture for "
-                + FurniturePricing.format(amount) + (menu.chosen == Currency.COINS ? " Coins." : " Tokens."));
+                + FurniturePricing.format(amount) + " " + label(menu.currency) + ".");
     }
 
-    private void refund(Player player, Currency currency, BigDecimal amount) {
-        if (amount.signum() == 0) return;
+    private void refund(Player player, ShopEconomy.Payment payment, BigDecimal amount) {
         boolean okay;
-        if (currency == Currency.COINS) {
-            Economy economy = coins();
-            okay = economy != null && economy.depositPlayer(player, amount.doubleValue()).transactionSuccess();
-        } else {
-            VoxelCurrencyBridge bridge = tokens();
-            okay = bridge != null && bridge.transaction("deposit", player.getUniqueId(),
-                    "tokens", amount).transactionSuccess();
+        try { okay = payment.refund(player, amount); }
+        catch (RuntimeException error) {
+            okay = false;
+            plugin.getLogger().log(Level.SEVERE, "Refund provider threw an exception", error);
         }
         if (!okay) plugin.getLogger().severe("MANUAL REFUND REQUIRED: " + player.getUniqueId()
-                + " " + FurniturePricing.format(amount) + " " + currency);
+                + " " + FurniturePricing.format(amount) + " " + payment.currency());
     }
 
     private static final class MenuHolder implements InventoryHolder {
         final UUID owner;
         final UUID instanceId;
-        final Currency chosen;
+        final int page;
+        final String currency;
         final BigDecimal quoted;
+        final ShopEconomy.Payment payment;
+        final Map<Integer, String> currencySlots = new LinkedHashMap<Integer, String>();
+        boolean confirmAttempted;
         Inventory inventory;
 
-        MenuHolder(UUID owner, UUID instanceId, Currency chosen, BigDecimal quoted) {
-            this.owner = owner; this.instanceId = instanceId; this.chosen = chosen; this.quoted = quoted;
+        MenuHolder(UUID owner, UUID instanceId, int page,
+                   String currency, BigDecimal quoted, ShopEconomy.Payment payment) {
+            this.owner = owner;
+            this.instanceId = instanceId;
+            this.page = page;
+            this.currency = currency;
+            this.quoted = quoted;
+            this.payment = payment;
         }
 
         @Override public Inventory getInventory() { return inventory; }

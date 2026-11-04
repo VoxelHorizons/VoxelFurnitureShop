@@ -6,99 +6,118 @@ import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.Collections;
-import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 
 /**
- * Prices are alternatives, never a combined charge. Numeric legacy worth/value
- * remains Coins; a mapping may offer either or both Coins and Tokens.
+ * A furniture price is a set of alternative currency IDs, not a bundled cost.
+ * Currency IDs are validated against actual economy services by ShopEconomy.
  */
 public final class FurniturePricing {
-    public enum Currency { COINS, TOKENS }
+    private final Map<String, BigDecimal> amounts;
 
-    private final Map<Currency, BigDecimal> amounts;
-
-    private FurniturePricing(Map<Currency, BigDecimal> amounts) {
-        this.amounts = Collections.unmodifiableMap(new EnumMap<Currency, BigDecimal>(amounts));
+    private FurniturePricing(Map<String, BigDecimal> amounts) {
+        this.amounts = Collections.unmodifiableMap(new LinkedHashMap<String, BigDecimal>(amounts));
     }
 
-    public static FurniturePricing fromItem(ItemDefinition item) {
-        if (item == null) return parse(null);
+    public static FurniturePricing fromItem(ItemDefinition item, String defaultCurrency) {
+        if (item == null) return parse(null, defaultCurrency);
         Object raw = item.properties().get("furniture");
-        if (raw == null) return parse(null);
-        if (!(raw instanceof Map)) throw new IllegalArgumentException("Furniture properties must be a mapping");
-        return parse((Map<?, ?>) raw);
+        if (raw == null) return parse(null, defaultCurrency);
+        if (!(raw instanceof Map))
+            throw new IllegalArgumentException("Furniture properties must be a mapping");
+        return parse((Map<?, ?>) raw, defaultCurrency);
     }
 
+    /** Backwards-compatible legacy convenience method; Coins remains the default. */
+    public static FurniturePricing fromItem(ItemDefinition item) {
+        return fromItem(item, "coins");
+    }
+
+    /** Backwards-compatible method for tests and callers using the standard default. */
     public static FurniturePricing parse(Map<?, ?> furniture) {
-        EnumMap<Currency, BigDecimal> values = new EnumMap<Currency, BigDecimal>(Currency.class);
-        if (furniture == null) return new FurniturePricing(values);
+        return parse(furniture, "coins");
+    }
+
+    public static FurniturePricing parse(Map<?, ?> furniture, String defaultCurrency) {
+        Map<String, BigDecimal> prices = new LinkedHashMap<String, BigDecimal>();
+        if (furniture == null) return new FurniturePricing(prices);
         if (furniture.containsKey("worth") && furniture.containsKey("value"))
             throw new IllegalArgumentException("Use either furniture.worth or furniture.value, not both");
         Object raw = furniture.containsKey("worth") ? furniture.get("worth") : furniture.get("value");
-        if (raw == null) return new FurniturePricing(values);
+        if (raw == null) return new FurniturePricing(prices);
         if (raw instanceof Number) {
-            values.put(Currency.COINS, amount(raw, Currency.COINS));
+            prices.put(key(defaultCurrency), amount(raw));
         } else if (raw instanceof Map) {
             Map<?, ?> mapping = (Map<?, ?>) raw;
             if (mapping.isEmpty()) throw new IllegalArgumentException("Furniture worth has no currency prices");
             for (Map.Entry<?, ?> entry : mapping.entrySet()) {
-                String key = String.valueOf(entry.getKey()).toLowerCase(Locale.ROOT);
-                Currency currency;
-                if ("coins".equals(key)) currency = Currency.COINS;
-                else if ("tokens".equals(key)) currency = Currency.TOKENS;
-                else throw new IllegalArgumentException("Unsupported furniture currency: " + entry.getKey());
-                if (values.put(currency, amount(entry.getValue(), currency)) != null)
-                    throw new IllegalArgumentException("Duplicate furniture currency: " + key);
+                String key = key(entry.getKey());
+                for (String prior : prices.keySet()) {
+                    if (prior.equalsIgnoreCase(key))
+                        throw new IllegalArgumentException("Duplicate furniture currency: " + key);
+                }
+                prices.put(key, amount(entry.getValue()));
             }
         } else {
-            throw new IllegalArgumentException("Furniture worth must be a number or a coins/tokens mapping");
+            throw new IllegalArgumentException("Furniture worth must be numeric or a currency mapping");
         }
-        return new FurniturePricing(values);
+        return new FurniturePricing(prices);
     }
 
-    private static BigDecimal amount(Object raw, Currency currency) {
-        if (!(raw instanceof Number))
-            throw new IllegalArgumentException(currency + " price must be numeric");
+    private static String key(Object raw) {
+        if (!(raw instanceof String)) throw new IllegalArgumentException("Currency ID must be a string");
+        String key = ((String) raw).trim();
+        if (key.isEmpty() || key.length() > 128)
+            throw new IllegalArgumentException("Currency ID must contain 1 to 128 characters");
+        for (int i = 0; i < key.length(); i++)
+            if (Character.isISOControl(key.charAt(i)))
+                throw new IllegalArgumentException("Currency ID contains a control character");
+        return key;
+    }
+
+    private static BigDecimal amount(Object raw) {
+        if (!(raw instanceof Number)) throw new IllegalArgumentException("Furniture price must be numeric");
         final BigDecimal value;
         try {
             value = new BigDecimal(raw.toString()).stripTrailingZeros();
         } catch (NumberFormatException invalid) {
-            throw new IllegalArgumentException(currency + " price must be finite", invalid);
+            throw new IllegalArgumentException("Furniture price must be finite", invalid);
         }
-        if (value.signum() < 0) throw new IllegalArgumentException(currency + " price cannot be negative");
-        if (currency == Currency.TOKENS && value.scale() > 0)
-            throw new IllegalArgumentException("Tokens prices must be whole numbers");
-        if (currency == Currency.COINS && value.scale() > 2)
-            throw new IllegalArgumentException("Coins prices cannot exceed two decimals");
+        if (value.signum() < 0) throw new IllegalArgumentException("Furniture price cannot be negative");
         return value;
     }
 
     public boolean available() { return !amounts.isEmpty(); }
-    public boolean offers(Currency currency) { return amounts.containsKey(currency); }
-    public BigDecimal cost(Currency currency) { return amounts.get(currency); }
-    public Map<Currency, BigDecimal> amounts() { return amounts; }
+    public Map<String, BigDecimal> amounts() { return amounts; }
 
-    /** Text-only fallback avoids assuming a resource-pack token glyph exists. */
+    public boolean offers(String currency) {
+        return cost(currency) != null;
+    }
+
+    public BigDecimal cost(String currency) {
+        if (currency == null) return null;
+        for (Map.Entry<String, BigDecimal> entry : amounts.entrySet())
+            if (entry.getKey().equalsIgnoreCase(currency)) return entry.getValue();
+        return null;
+    }
+
     public String display() {
         StringBuilder result = new StringBuilder();
-        if (offers(Currency.COINS)) result.append(format(cost(Currency.COINS))).append(" Coins");
-        if (offers(Currency.TOKENS)) {
-            if (result.length() > 0) result.append(" &7or &d");
-            result.append(format(cost(Currency.TOKENS))).append(" Tokens");
+        for (Map.Entry<String, BigDecimal> entry : amounts.entrySet()) {
+            if (result.length() > 0) result.append(" or ");
+            result.append(format(entry.getValue())).append(' ').append(entry.getKey());
         }
         return result.toString();
     }
 
     public String legacyValue() {
-        if (offers(Currency.COINS)) return format(cost(Currency.COINS));
-        return offers(Currency.TOKENS) ? format(cost(Currency.TOKENS)) : "";
+        if (amounts.isEmpty()) return "";
+        return format(amounts.values().iterator().next());
     }
 
-    public static String format(BigDecimal value) {
-        DecimalFormat formatter = new DecimalFormat("#,##0.##", DecimalFormatSymbols.getInstance(Locale.US));
-        formatter.setGroupingUsed(true);
-        return formatter.format(value);
+    public static String format(BigDecimal amount) {
+        return new DecimalFormat("#,##0.######", DecimalFormatSymbols.getInstance(Locale.US)).format(amount);
     }
 }

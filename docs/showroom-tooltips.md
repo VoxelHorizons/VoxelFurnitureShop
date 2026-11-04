@@ -4,7 +4,7 @@ Install a compatible VoxelCore (with the named UI tooltip renderer) and VoxelFur
 
 ## Pricing source
 
-Furniture items define `properties.furniture.worth` (or legacy `value`). A number is a **Coins** price for backwards compatibility. A mapping offers Coins, Tokens, or both as **alternative** methods of payment, never a combined charge. This price is inherited through the existing content inheritance system. Unpriced furniture displays `Not for sale` and cannot open checkout. Coins use the existing legacy Vault/Essentials provider; Tokens use VoxelCore's separate VaultUnlocked balance bridge.
+Furniture items define `properties.furniture.worth` (or the legacy `value` alias). A single number uses `economy.default-currency`; a mapping can offer **any number of registered currency IDs** as alternative payment options, never a combined charge.
 
 ```yaml
 properties:
@@ -12,15 +12,28 @@ properties:
     worth:
       coins: 250000
       tokens: 500
+      gems: 15
 ```
 
-Also valid: `worth: 300` (Coins only), `worth: {tokens: 500}` (Tokens only). Tokens must be whole numbers; Coins may have at most two decimals. Invalid, negative, non-numeric or unknown currency prices are rejected.
+The names above are examples; the currency IDs must be supplied by the server's configured economy services. Other valid examples are `worth: 300`, `worth: {tokens: 500}`, and `worth: {credits: 125}`. Prices must be finite, numeric and nonnegative. The selected economy provider controls currency precision.
+
+### Economy providers
+
+- **Original Vault:** exposes one unnamed currency. `economy.legacy-currency` (default: `coins`) assigns that balance a price key. You may choose any alias (for example `credits`), but this does not magically create multiple currencies in legacy Vault.
+- **VaultUnlocked:** exposes multiple currency IDs via the registered Vault2 economy provider. Any ID returned by that provider is supported. No special VoxelCore Tokens dependency is required; the existing VoxelCore plugin is still required for furniture item creation and tooltips.
+- **Both installed:** the configured legacy alias is routed to Vault; other currency IDs route to VaultUnlocked. If the same ID exists in both providers, the legacy alias takes precedence. Set `economy.legacy-currency: ""` to send that ID to VaultUnlocked instead.
+
+```yaml
+economy:
+  default-currency: coins  # Used when worth is a single number
+  legacy-currency: coins   # ID mapped to the original Vault economy
+```
 
 ## Purchasing
 
-Right-click a priced active-variant showroom furniture model or collision block to open its native inventory menu. The item preview appears above separate Coins and Tokens choices (only configured choices are shown). Selecting a currency opens a confirmation screen before any funds are withdrawn. The server verifies the display is still active, the price hasn't changed, the player is nearby, and the inventory has an empty slot. It then withdraws **only the selected currency** and grants one real item using VoxelCore's item manager.
+Right-click a priced active-variant showroom furniture model or collision block to open its native inventory menu. The item preview appears above available registered payment choices. Seven options are shown per page, with next/previous navigation when needed. Selecting a currency opens a confirmation screen before any funds are withdrawn. The server verifies the display is still active, the price hasn't changed, the player is nearby, and the inventory has an empty slot. It then withdraws **only the selected currency** and grants one real item using VoxelCore's item manager.
 
-An unsuccessful payment does not grant furniture. If delivery unexpectedly fails after payment, the plugin attempts a refund and logs any refund failure for staff action. Shop fixtures, persistent decorative furniture and closed/editing showrooms are never purchasable. Bedrock and Java use the same inventory-based UI. VaultUnlocked must be enabled and VoxelCore Tokens configured to pay with Tokens; the traditional Vault Coins economy must be registered to pay with Coins.
+An unsuccessful payment does not grant furniture. If delivery unexpectedly fails after payment, the plugin attempts a refund and logs any refund failure for staff action. Shop fixtures, persistent decorative furniture and closed/editing showrooms are never purchasable. Bedrock and Java use the same inventory-based UI. A single legacy Vault currency works without a Vault2 provider. Additional named currencies require VaultUnlocked and a modern economy provider registered with Vault2.
 
 ## Config
 
@@ -33,8 +46,11 @@ tooltip:
 
   title: "&f<furniture>"
   available-line: "<furniture_prices>"
-  coins-format: "&6<amount> &f:shop_coin:"
-  tokens-format: "&d<amount> Tokens"
+  currency-format: "&6<amount> &f<currency>"
+  currency-formats:
+    coins: "&6<amount> &f:shop_coin:"
+    # Optional custom currency formatting:
+    # gems: "&d<amount> Gems"
   currency-separator: " &7or "
   unavailable-line: "&6Price unavailable &f:shop_coin:"
   sale-line: "&f:shop_mouse: &7Click to Buy"
@@ -44,10 +60,10 @@ tooltip:
 The renderer outputs exactly three lines, composed from five independently editable fields:
 
 - Line 1 always uses `title`.
-- Line 2 uses `available-line` if the furniture has a configured numeric worth, otherwise `unavailable-line`.
+- Line 2 uses `available-line` if the furniture has a configured worth, otherwise `unavailable-line`.
 - Line 3 uses `sale-line` if worth exists, otherwise `not-for-sale-line`.
 
-`<furniture>` inserts the display name, `<furniture_value>` retains the legacy numeric price placeholder, and `<furniture_prices>` inserts the formatted Coins and/or Tokens options. Use the latter for dual currency. `<amount>` in each currency format inserts its own amount. Every line may contain color codes and VoxelCore UI font placeholders such as `:shop_coin:` and `:shop_mouse:`. All fields are complete string templates; no text matching/replacement for phrases like "Click to Buy" occurs.
+`<furniture>` inserts the display name, `<furniture_value>` retains the legacy numeric price placeholder, and `<furniture_prices>` inserts the formatted price for every offered currency. Use the latter for multiple currencies. `<amount>` inserts a price, and `<currency>` inserts its currency ID. Every line may contain color codes and VoxelCore UI font placeholders such as `:shop_coin:` and `:shop_mouse:`. All fields are complete string templates; no text matching/replacement for phrases like "Click to Buy" occurs.
 
 **Migration:** The previous `tooltip.lore` list has been superseded by `tooltip.title` and `tooltip.available-line`. Move any first/second lines you've customized into those fields. Older keys such as `unpriced-label`, `buy-label` and `not-for-sale-label` are no longer used. Apply changes with `/vfs reload`.
 

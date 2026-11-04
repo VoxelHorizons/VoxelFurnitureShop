@@ -3,6 +3,7 @@ package org.voxelhorizons.furnitureshop;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.voxelhorizons.VoxelCore;
@@ -11,7 +12,6 @@ import org.voxelhorizons.furniture.model.FurnitureInstance;
 import org.voxelhorizons.furnitureshop.service.LayoutService;
 import org.voxelhorizons.furnitureshop.service.ShopService;
 import org.voxelhorizons.furnitureshop.service.FurniturePricing;
-import org.voxelhorizons.furnitureshop.service.FurniturePricing.Currency;
 
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
@@ -36,9 +36,11 @@ public final class ShopTooltipService {
     private final String unavailableLine;
     private final String saleLine;
     private final String notForSaleLine;
-    private final String coinsFormat;
-    private final String tokensFormat;
+    private final String currencyFormat;
+    private final Map<String, String> currencyFormats = new HashMap<String, String>();
     private final String currencySeparator;
+    private final String legacyCurrency;
+    private final String defaultCurrency;
 
     public ShopTooltipService(JavaPlugin plugin, ShopService shops) {
         this(plugin, shops, plugin.getConfig());
@@ -55,9 +57,15 @@ public final class ShopTooltipService {
         this.unavailableLine = config.getString("tooltip.unavailable-line", "&6Price unavailable");
         this.saleLine = config.getString("tooltip.sale-line", "&f:shop_mouse: &7Click to Buy");
         this.notForSaleLine = config.getString("tooltip.not-for-sale-line", "&f:shop_mouse: &7Not for sale");
-        this.coinsFormat = config.getString("tooltip.coins-format", "&6<amount> &f:shop_coin:");
-        this.tokensFormat = config.getString("tooltip.tokens-format", "&d<amount> Tokens");
+        this.currencyFormat = config.getString("tooltip.currency-format", "&6<amount> &f<currency>");
         this.currencySeparator = config.getString("tooltip.currency-separator", " &7or ");
+        this.defaultCurrency = config.getString("economy.default-currency", "coins").trim();
+        this.legacyCurrency = config.getString("economy.legacy-currency", "coins").trim();
+        ConfigurationSection section = config.getConfigurationSection("tooltip.currency-formats");
+        if (section != null) for (Map.Entry<String, Object> entry : section.getValues(false).entrySet()) {
+            if (entry.getValue() instanceof String)
+                currencyFormats.put(entry.getKey().toLowerCase(Locale.ROOT), (String) entry.getValue());
+        }
     }
 
     public void tick() {
@@ -82,8 +90,8 @@ public final class ShopTooltipService {
             String combined = formatPrices(value);
             // Preserve existing coin-only config.yml, but don't mislabel Tokens
             // as Coins when an older saved config still uses the original line.
-            String line = value.offers(Currency.TOKENS)
-                    && "&6<furniture_value> &f:shop_coin:".equals(availableLine)
+            String line = "&6<furniture_value> &f:shop_coin:".equals(availableLine)
+                    && (value.amounts().size() != 1 || !value.offers(legacyCurrency))
                     ? "<furniture_prices>" : availableLine;
             List<String> lines = renderLines(title, line, unavailableLine,
                     saleLine, notForSaleLine, name, value.legacyValue(), combined, value.available());
@@ -136,16 +144,18 @@ public final class ShopTooltipService {
 
     private FurniturePricing pricing(FurnitureInstance instance) {
         return FurniturePricing.fromItem(VoxelCore.getInstance().getItemManager()
-                .getDefinition(instance.definitionId()).orElse(null));
+                .getDefinition(instance.definitionId()).orElse(null), defaultCurrency);
     }
 
     private String formatPrices(FurniturePricing price) {
         StringBuilder builder = new StringBuilder();
-        if (price.offers(Currency.COINS))
-            builder.append(coinsFormat.replace("<amount>", FurniturePricing.format(price.cost(Currency.COINS))));
-        if (price.offers(Currency.TOKENS)) {
+        for (Map.Entry<String, java.math.BigDecimal> entry : price.amounts().entrySet()) {
             if (builder.length() > 0) builder.append(currencySeparator);
-            builder.append(tokensFormat.replace("<amount>", FurniturePricing.format(price.cost(Currency.TOKENS))));
+            String currency = entry.getKey();
+            String format = currencyFormats.get(currency.toLowerCase(Locale.ROOT));
+            if (format == null) format = currencyFormat;
+            builder.append(format.replace("<amount>", FurniturePricing.format(entry.getValue()))
+                    .replace("<currency>", currency));
         }
         return builder.toString();
     }

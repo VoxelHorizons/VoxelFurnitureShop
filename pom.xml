@@ -29,7 +29,7 @@
     </repositories>
 
     <dependencies>
-        <!-- Coins use the legacy Vault provider; Tokens use VoxelCore's VaultUnlocked bridge. -->
+        <!-- The original Vault API and VaultUnlocked's currency-aware API are supported. -->
         <dependency>
             <groupId>net.milkbowl.vault</groupId>
             <artifactId>VaultUnlockedAPI</artifactId>

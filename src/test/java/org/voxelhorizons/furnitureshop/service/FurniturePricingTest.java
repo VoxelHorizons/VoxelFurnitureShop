@@ -1,77 +1,78 @@
 package org.voxelhorizons.furnitureshop.service;
 
 import org.junit.Test;
+
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
-
 import static org.junit.Assert.*;
-import static org.voxelhorizons.furnitureshop.service.FurniturePricing.Currency.*;
 
 public class FurniturePricingTest {
-    @Test public void legacyWorthIsCoins() {
+    @Test public void legacyNumericWorthUsesConfiguredDefaultCurrency() {
         Map<String, Object> furniture = new LinkedHashMap<String, Object>();
         furniture.put("worth", 250);
-        FurniturePricing price = FurniturePricing.parse(furniture);
-        assertEquals(0, new BigDecimal("250").compareTo(price.cost(COINS)));
-        assertFalse(price.offers(TOKENS));
+        FurniturePricing price = FurniturePricing.parse(furniture, "credits");
+        assertEquals(0, new BigDecimal("250").compareTo(price.cost("credits")));
+        assertFalse(price.offers("coins"));
     }
 
-    @Test public void legacyValueIsStillCoins() {
+    @Test public void legacyValueDefaultsToCoins() {
         Map<String, Object> furniture = new LinkedHashMap<String, Object>();
         furniture.put("value", 1250.5);
-        assertEquals("1,250.5 Coins", FurniturePricing.parse(furniture).display());
+        assertEquals("1,250.5 coins", FurniturePricing.parse(furniture).display());
     }
 
-    @Test public void dualCurrenciesAreAlternatives() {
+    @Test public void arbitraryCurrenciesAreAlternativePrices() {
         Map<String, Object> worth = new LinkedHashMap<String, Object>();
-        worth.put("coins", 250000);
-        worth.put("tokens", 500);
+        worth.put("gold", 250000);
+        worth.put("gems", 15);
+        worth.put("loyaltyPoints", 500);
         Map<String, Object> furniture = new LinkedHashMap<String, Object>();
         furniture.put("worth", worth);
         FurniturePricing price = FurniturePricing.parse(furniture);
-        assertEquals(0, new BigDecimal("250000").compareTo(price.cost(COINS)));
-        assertEquals(0, new BigDecimal("500").compareTo(price.cost(TOKENS)));
-        assertEquals(2, price.amounts().size());
-        assertEquals("250,000 Coins &7or &d500 Tokens", price.display());
+        assertEquals(3, price.amounts().size());
+        assertEquals(0, new BigDecimal("250000").compareTo(price.cost("GOLD")));
+        assertEquals(0, new BigDecimal("15").compareTo(price.cost("gems")));
+        assertEquals(0, new BigDecimal("500").compareTo(price.cost("loyaltyPoints")));
+        assertEquals("250,000 gold or 15 gems or 500 loyaltyPoints", price.display());
     }
 
-    @Test public void onlyTokensIsSupported() {
+    @Test public void singleNamedCurrencyIsAllowed() {
         Map<String, Object> worth = new LinkedHashMap<String, Object>();
-        worth.put("tokens", 500);
+        worth.put("custom:currency", 2.75);
         Map<String, Object> furniture = new LinkedHashMap<String, Object>();
         furniture.put("worth", worth);
-        assertFalse(FurniturePricing.parse(furniture).offers(COINS));
-        assertTrue(FurniturePricing.parse(furniture).offers(TOKENS));
+        assertTrue(FurniturePricing.parse(furniture).offers("custom:currency"));
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void fractionalTokensAreRejected() {
+    public void duplicateCaseInsensitiveCurrencyIsRejected() {
         Map<String, Object> worth = new LinkedHashMap<String, Object>();
-        worth.put("tokens", 1.5);
-        Map<String, Object> furniture = new LinkedHashMap<String, Object>();
-        furniture.put("worth", worth);
-        FurniturePricing.parse(furniture);
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void unknownCurrenciesAreRejected() {
-        Map<String, Object> worth = new LinkedHashMap<String, Object>();
-        worth.put("gems", 1);
+        worth.put("Tokens", 10);
+        worth.put("tokens", 12);
         Map<String, Object> furniture = new LinkedHashMap<String, Object>();
         furniture.put("worth", worth);
         FurniturePricing.parse(furniture);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void invalidNegativePricesAreRejected() {
+    public void unknownEmptyCurrencyIsRejected() {
+        Map<String, Object> worth = new LinkedHashMap<String, Object>();
+        worth.put(" ", 1);
+        Map<String, Object> furniture = new LinkedHashMap<String, Object>();
+        furniture.put("worth", worth);
+        FurniturePricing.parse(furniture);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void negativeAmountsAreRejected() {
         Map<String, Object> furniture = new LinkedHashMap<String, Object>();
         furniture.put("worth", -10);
         FurniturePricing.parse(furniture);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void bothLegacyAliasesAreRejected() {
+    public void bothAliasesAreRejected() {
         Map<String, Object> furniture = new LinkedHashMap<String, Object>();
         furniture.put("value", 10);
         furniture.put("worth", 12);

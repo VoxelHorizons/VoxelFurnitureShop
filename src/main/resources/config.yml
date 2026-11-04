@@ -7,6 +7,13 @@ rotation:
   restock-delay-ticks: 80
   reopen-delay-ticks: 20
   avoid-current-variant: true
+economy:
+  # Default currency for legacy numeric worth: 250.
+  default-currency: coins
+  # Original Vault exposes one unnamed currency; this aliases its ID.
+  # Set to "" to route even this ID through VaultUnlocked.
+  legacy-currency: coins
+
 tooltip:
   enabled: true
   tooltip: default
@@ -17,8 +24,10 @@ tooltip:
   title: "&f<furniture>"
   # <furniture_prices> includes every configured purchase currency.
   available-line: "<furniture_prices>"
-  coins-format: "&6<amount> &f:shop_coin:"
-  tokens-format: "&d<amount> Tokens"
+  # Default display for any named currency without an override.
+  currency-format: "&6<amount> &f<currency>"
+  currency-formats:
+    coins: "&6<amount> &f:shop_coin:"
   currency-separator: " &7or "
   unavailable-line: "&6Price unavailable &f:shop_coin:"
   sale-line: "&f:shop_mouse: &7Click to Buy"
