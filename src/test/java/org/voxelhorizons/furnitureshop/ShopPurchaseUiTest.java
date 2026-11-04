@@ -8,133 +8,80 @@ import java.util.Collections;
 import static org.junit.Assert.*;
 
 public class ShopPurchaseUiTest {
-    @Test public void defaultsMatchThreeRowMenu() {
+    @Test public void defaultsMatchTheSingleFurnitureShopTexture() {
         ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(new YamlConfiguration());
-        assertEquals("&8Furniture Purchase", ui.title(false));
-        assertEquals("&8Furniture Purchase", ui.title(true));
-        assertTrue(ui.showButtonItems());
+        assertEquals(":offset_-8::furniture_shop::offset_8:&rPurchase Furniture", ui.title());
+        assertEquals("voxel:ui/blank", ui.buttonItem());
         assertEquals(4, ui.previewSlot());
-        assertEquals(0, ui.selectCancel());
-        assertEquals(18, ui.selectPrevious());
-        assertEquals(26, ui.selectNext());
-        assertEquals(Arrays.asList(10, 11, 12, 13, 14, 15, 16), ui.currencySlots());
-        assertEquals(Arrays.asList(1, 2), ui.confirmCancelSlots());
-        assertEquals(Arrays.asList(6, 7), ui.confirmPurchaseSlots());
-        assertEquals(-1, ui.confirmBack());
+        assertEquals(Arrays.asList(1, 2), ui.cancelSlots());
+        assertEquals(Arrays.asList(6, 7), ui.purchaseSlots());
     }
 
-    @Test public void configurableGlyphsAndHitboxes() {
+    @Test public void configuredTitleAndButtonsAreHonoured() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.glyphs.selection", "&f:shop_select:");
-        config.set("purchase-ui.glyphs.confirmation", "&f:shop_confirm:");
-        config.set("purchase-ui.show-button-items", false);
+        config.set("purchase-ui.title", ":furniture_shop:");
+        config.set("purchase-ui.button-item", "voxel:alternate_blank");
         config.set("purchase-ui.preview-slot", 13);
-        config.set("purchase-ui.selection.cancel-slot", 0);
-        config.set("purchase-ui.selection.previous-page-slot", 18);
-        config.set("purchase-ui.selection.next-page-slot", 26);
-        config.set("purchase-ui.selection.currency-slots", Arrays.asList(10, 11, 12));
-        config.set("purchase-ui.confirmation.cancel-slot", 0);
-        config.set("purchase-ui.confirmation.purchase-slot", 8);
-        config.set("purchase-ui.confirmation.back-slot", 18);
-
+        config.set("purchase-ui.cancel-slots", Arrays.asList(9, 10));
+        config.set("purchase-ui.purchase-slots", Arrays.asList(15, 16));
         ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(config);
-        assertEquals("&f:shop_select:", ui.title(false));
-        assertEquals("&f:shop_confirm:", ui.title(true));
-        assertEquals(Arrays.asList(10, 11, 12), ui.currencySlots());
+        assertEquals(":furniture_shop:", ui.title());
+        assertEquals("voxel:alternate_blank", ui.buttonItem());
         assertEquals(13, ui.previewSlot());
-        assertFalse(ui.showButtonItems());
+        assertEquals(Arrays.asList(9, 10), ui.cancelSlots());
+        assertEquals(Arrays.asList(15, 16), ui.purchaseSlots());
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsOverlapBetweenCurrencyChoiceAndNavigation() {
+    public void rejectsOverlappingPurchaseAndCancelSlots() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.selection.currency-slots", Arrays.asList(18, 11, 12));
+        config.set("purchase-ui.cancel-slots", Arrays.asList(1, 6));
         ShopPurchaseUi.fromConfig(config);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsPreviewOverlappingPurchaseButton() {
+    public void rejectsDuplicatePurchaseSlots() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.preview-slot", 6);
+        config.set("purchase-ui.purchase-slots", Arrays.asList(6, 6));
         ShopPurchaseUi.fromConfig(config);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsOutOfRangeSlot() {
+    public void rejectsPreviewOverlap() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.confirmation.purchase-slot", 27);
+        config.set("purchase-ui.preview-slot", 7);
         ShopPurchaseUi.fromConfig(config);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsDuplicateCurrencySlots() {
+    public void rejectsOutOfRangeSlots() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.selection.currency-slots", Arrays.asList(11, 11));
+        config.set("purchase-ui.cancel-slots", Arrays.asList(1, 27));
         ShopPurchaseUi.fromConfig(config);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsNonNumericSlots() {
+    public void rejectsEmptyButtons() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.selection.currency-slots", Arrays.asList("ten", 11));
+        config.set("purchase-ui.purchase-slots", Collections.emptyList());
         ShopPurchaseUi.fromConfig(config);
     }
 
-    @Test(expected = IllegalArgumentException.class)
-    public void rejectsEmptyCurrencySlots() {
-        YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.selection.currency-slots", Collections.emptyList());
-        ShopPurchaseUi.fromConfig(config);
+    @Test public void defaultCurrencyIsPreselectedWhenItExists() {
+        assertEquals(1, ShopPurchaseService.initialCurrencyIndex(
+                Arrays.asList("gems", "coins", "tokens"), "coins"));
     }
 
-    @Test public void hiddenButtonsStillRetainSlotAssignments() {
-        YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.show-button-items", false);
-        config.set("purchase-ui.selection.currency-slots", Arrays.asList(11, 15));
-        ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(config);
-        assertFalse(ui.showButtonItems());
-        assertEquals(Arrays.asList(11, 15), ui.currencySlots());
-        assertEquals(6, ui.confirmPurchase());
+    @Test public void unknownDefaultFallsBackToFirstCurrency() {
+        assertEquals(0, ShopPurchaseService.initialCurrencyIndex(
+                Arrays.asList("gems", "tokens"), "coins"));
     }
 
-    @Test public void groupedActionsMatchTextureAndBlankItem() {
-        ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(new YamlConfiguration());
-        assertEquals("voxel:ui/blank", ui.confirmationButtonItem());
-        assertEquals(4, ui.previewSlot());
-        assertEquals(Arrays.asList(1, 2), ui.confirmCancelSlots());
-        assertEquals(Arrays.asList(6, 7), ui.confirmPurchaseSlots());
-        assertFalse(ui.hasConfirmBack());
-    }
-
-    @Test public void legacySingleSlotKeysRemainAccepted() {
-        YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.confirmation.cancel-slot", 0);
-        config.set("purchase-ui.confirmation.purchase-slot", 8);
-        config.set("purchase-ui.confirmation.back-slot", 18);
-        ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(config);
-        assertEquals(Collections.singletonList(0), ui.confirmCancelSlots());
-        assertEquals(Collections.singletonList(8), ui.confirmPurchaseSlots());
-        assertTrue(ui.hasConfirmBack());
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void rejectsOverlappingConfirmationButtonGroups() {
-        YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.confirmation.cancel-slots", Arrays.asList(1, 6));
-        ShopPurchaseUi.fromConfig(config);
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void rejectsDuplicateButtonHitboxes() {
-        YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.confirmation.purchase-slots", Arrays.asList(6, 6));
-        ShopPurchaseUi.fromConfig(config);
-    }
-
-    @Test(expected = IllegalArgumentException.class)
-    public void rejectsOutOfRangeGroupedSlot() {
-        YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.confirmation.cancel-slots", Arrays.asList(1, 27));
-        ShopPurchaseUi.fromConfig(config);
+    @Test public void currencyCyclingWrapsAndSupportsAnyNumberOfCurrencies() {
+        java.util.List<String> currencies = Arrays.asList("coins", "tokens", "gems", "credits");
+        assertEquals(1, ShopPurchaseService.nextCurrencyIndex(currencies, 0));
+        assertEquals(2, ShopPurchaseService.nextCurrencyIndex(currencies, 1));
+        assertEquals(3, ShopPurchaseService.nextCurrencyIndex(currencies, 2));
+        assertEquals(0, ShopPurchaseService.nextCurrencyIndex(currencies, 3));
     }
 }

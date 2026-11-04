@@ -36,29 +36,11 @@ tooltip:
 # A native 3-row inventory is used on both Java and Bedrock. Your custom
 # VoxelCore font glyph supplies the visible background; the actions remain
 # actual Bukkit inventory slot hitboxes (0-26), not arbitrary pixel regions.
+# A single 27-slot screen. The title includes your authored VoxelCore
+# background glyph; the two button groups are VoxelCore blank render items.
 purchase-ui:
-  title: "&8Furniture Purchase"
-  glyphs:
-    # Examples after defining font glyphs in VoxelCore:
-    # selection: "&f:shop_purchase_selection:"
-    # confirmation: "&f:shop_purchase_confirmation:"
-    selection: ""
-    confirmation: ""
-  # False hides vanilla buttons for a fully custom font-overlay interface.
-  # The furniture preview remains visible, and all action slots remain clickable.
-  show-button-items: true
+  title: ":offset_-8::furniture_shop::offset_8:&rPurchase Furniture"
+  button-item: "voxel:ui/blank"
   preview-slot: 4
-  selection:
-    cancel-slot: 0
-    previous-page-slot: 18
-    next-page-slot: 26
-    # Payment options fill these hitboxes in this order, one currency per slot.
-    currency-slots: [10, 11, 12, 13, 14, 15, 16]
-  confirmation:
-    # The actual item key is voxel:ui-blank, but resource-path notation works.
-    button-item: "voxel:ui/blank"
-    # Two hitboxes for each painted button; either slot triggers its action.
-    cancel-slots: [1, 2]
-    purchase-slots: [6, 7]
-    # No visible Back button in this texture.
-    back-slot: -1
+  cancel-slots: [1, 2]
+  purchase-slots: [6, 7]
