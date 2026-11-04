@@ -70,6 +70,88 @@ When confirming any currency, the server checks the showroom instance, nearby ra
 
 `/vfs reload` validates all UI slot lists and rejects collisions. Older `purchase-ui.glyphs`, `purchase-ui.selection`, `purchase-ui.confirmation`, and `show-button-items` keys are obsolete. No packet plugins or third-party GUI frameworks are needed.
 
+## Fully configurable purchase text
+
+Every customer-facing string in the purchase flow is editable in `config.yml`. This includes both inventory titles, the visible name **and lore** of the furniture preview, both confirmation buttons, the choose-currency button, every currency option (including unavailable options), and all purchase success/failure/validation messages.
+
+The item preview is a **copy** of the actual furniture item. Replacing its display name or lore affects only the shop window; the purchased item keeps the real definition's metadata. The default `<original_name>` and `<original_lore>` retain that metadata. To combine original lore with additional text, place `"<original_lore>"` on its own line in the list. Use `lore: []` to remove it. Setting `display-name: ""` produces an empty display name.
+
+```yaml
+purchase-ui:
+  currency-labels:
+    coins: "Coins"
+    tokens: "Tokens"
+    # gems: "Gems"
+
+  text:
+    preview:
+      display-name: "<original_name>"
+      lore: ["<original_lore>"]
+    cancel:
+      display-name: "&cCancel"
+      lore: ["&7Close the shop"]
+    purchase:
+      display-name: "&aBuy for <price> <currency>"
+      lore: ["&7Purchase <furniture>"]
+    choose-currency:
+      display-name: "&aChoose currency"
+      lore: ["&7Select how to pay"]
+    currency-selection:
+      preview:
+        display-name: "<original_name>"
+        lore: ["<original_lore>"]
+      available:
+        display-name: "&aPay <price> <currency>"
+        lore: ["&7Click to buy <furniture>"]
+      unavailable:
+        display-name: "&c<currency> unavailable"
+        lore: ["&7Currency provider is offline"]
+      currencies:
+        # Override just one field for a particular currency:
+        tokens:
+          display-name: "&bBuy for <price> Tokens"
+          lore:
+            - "&7Uses your Tokens balance"
+
+messages:
+  purchase-success: "&aPurchased <furniture> for <price> <currency>."
+  price-changed: "&cThe price changed. Open the shop again."
+  inventory-full: "&cPlease free up an inventory slot."
+  payment-declined: "&cYour payment was declined."
+  # Set any message to "" to suppress it.
+  purchase-ui-opened: ""
+  currency-selection-opened: ""
+  cancelled: ""
+  insufficient-funds:
+    default: "&cYou need <price> <currency> to buy <furniture>."
+    currencies:
+      coins: "&cYou need <price> Coins."
+      tokens: "&cYou need <price> Tokens."
+  # Optionally override any other message, e.g. the purchase receipt:
+  currency-overrides:
+    tokens:
+      purchase-success: "&bPurchased <furniture> using <price> Tokens!"
+```
+
+Text placeholders:
+
+| Placeholder | Meaning |
+| --- | --- |
+| `<furniture>`, `<item>` | The furniture's configured display name |
+| `<item_id>` | Namespaced furniture item ID |
+| `<price>`, `<amount>` | Formatted price for the selected currency |
+| `<currency>` | Display label from `purchase-ui.currency-labels` (falls back to ID) |
+| `<currency_id>` | Raw provider currency ID |
+| `<currencies>` | List of configured currency IDs for an item |
+| `<missing_currencies>` | IDs lacking button slot mappings, for error messages |
+| `<error>` | Invalid-price explanation |
+| `<original_name>` | Preview item's original display name |
+| `<original_lore>` | Preview item's original lore lines (use as a complete lore-list entry) |
+
+All configurable text supports legacy `&` color codes and authored VoxelCore font glyph aliases (e.g. `:shop_coin:`). Currency-specific item overrides fall back field-by-field to the generic `available`/`unavailable` entries. Currency-specific insufficient-funds messages continue to work under the original `messages.insufficient-funds.currencies` section; other messages may be overridden using `messages.currency-overrides.<currency_id>.<message_key>`.
+
+The remaining purchase message keys in the bundled `config.yml` cover invalid prices, unavailable providers, missing payment buttons, unavailable displays, price/provider changes, full inventories, payment declines/errors, delivery errors, purchase success, cancellation, and opening the purchase/choice screens. You can edit any of these without rebuilding the plugin; `/vfs reload` validates text types and applies the new settings. This does not change admin-command or rotation messages outside the checkout flow.
+
 ## Config
 
 ```yaml

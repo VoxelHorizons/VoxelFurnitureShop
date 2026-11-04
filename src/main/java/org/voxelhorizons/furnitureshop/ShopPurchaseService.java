@@ -7,6 +7,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -60,7 +61,7 @@ public final class ShopPurchaseService implements Listener {
         final FurniturePricing prices;
         try { prices = pricing(instance.definitionId()); }
         catch (IllegalArgumentException invalid) {
-            player.sendMessage(ChatColor.RED + "This furniture has an invalid price: " + invalid.getMessage());
+            send(player, "invalid-price", context(instance).put("error", invalid.getMessage()));
             return true;
         }
         if (!prices.available()) return false;
@@ -72,7 +73,7 @@ public final class ShopPurchaseService implements Listener {
                     .createItem(instance.definitionId()), prices);
         } catch (RuntimeException error) {
             plugin.getLogger().log(Level.WARNING, "Could not open furniture purchase menu", error);
-            player.sendMessage(ChatColor.RED + "Furniture purchasing is currently unavailable.");
+            send(player, "purchase-unavailable", context(instance));
         }
         return true;
     }
@@ -90,8 +91,23 @@ public final class ShopPurchaseService implements Listener {
         return player.getEyeLocation().distanceSquared(instance.location()) <= (range + 2.0D) * (range + 2.0D);
     }
 
-    private static String label(String currency) {
-        return currency.isEmpty() ? currency : Character.toUpperCase(currency.charAt(0)) + currency.substring(1);
+    private ShopPurchaseText text() { return new ShopPurchaseText(plugin.getConfig()); }
+
+    private ShopPurchaseText.Context context(FurnitureInstance instance) {
+        return new ShopPurchaseText.Context()
+                .put("furniture", instance == null ? "" : shops.layouts().displayName(instance))
+                .put("item", instance == null ? "" : shops.layouts().displayName(instance))
+                .put("item_id", instance == null ? "" : instance.definitionId().toString());
+    }
+
+    private ShopPurchaseText.Context priced(FurnitureInstance instance, String currency, BigDecimal amount) {
+        return context(instance).price(currency, amount);
+    }
+
+    private void send(Player player, String messageKey, ShopPurchaseText.Context context) {
+        ShopPurchaseText formatter = text();
+        String message = formatter.message(messageKey, context);
+        if (!message.isEmpty()) player.sendMessage(formatter.resolve(message));
     }
 
     /** UI choice is based on authored prices, not temporary provider availability. */
@@ -99,28 +115,28 @@ public final class ShopPurchaseService implements Listener {
         return new ArrayList<String>(prices.amounts().keySet());
     }
 
-    /** Both GUI titles resolve to VoxelCore's authored font aliases. */
-    private static String title(String raw) {
-        return VoxelCore.getInstance().getTextPlaceholderService().resolve(
-                ChatColor.translateAlternateColorCodes('&', raw));
+    /** Both GUI titles accept all purchase placeholders and font glyph aliases. */
+    private String title(String raw, ShopPurchaseText.Context context) {
+        return text().resolve(text().render(raw, context));
     }
 
-    private static ItemStack preview(ItemStack item) {
+    private ItemStack preview(ItemStack item, String path, ShopPurchaseText.Context context) {
         ItemStack clone = item.clone();
         clone.setAmount(1);
-        return clone;
+        return text().decorate(clone, path, context);
     }
 
     private void showPrimary(Player player, UUID instanceId, ItemStack item, FurniturePricing prices) {
         List<String> currencies = offered(prices);
         if (currencies.isEmpty()) {
-            player.sendMessage(ChatColor.RED + "This furniture has no supported currency provider.");
+            send(player, "no-prices", new ShopPurchaseText.Context());
             return;
         }
         ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(plugin.getConfig());
         if (currencies.size() > 1 && !ui.canDisplay(currencies)) {
-            player.sendMessage(ChatColor.RED + "The shop has no buttons configured for: "
-                    + String.join(", ", ui.missingCurrencies(currencies)));
+            send(player, "missing-currency-buttons", new ShopPurchaseText.Context()
+                    .put("missing_currencies", String.join(", ", ui.missingCurrencies(currencies)))
+                    .put("currencies", String.join(", ", currencies)));
             plugin.getLogger().warning("Missing purchase-ui.currency-selection.currencies slots for "
                     + ui.missingCurrencies(currencies));
             return;
@@ -131,21 +147,28 @@ public final class ShopPurchaseService implements Listener {
             String currency = currencies.get(0);
             direct = choice(currency, prices);
             if (direct == null || direct.payment == null) {
-                player.sendMessage(ChatColor.RED + "Currency provider is currently unavailable for " + label(currency) + ".");
+                send(player, "currency-provider-unavailable", contextForCurrency(currency, prices.cost(currency)));
                 return;
             }
         }
+        FurnitureInstance current = find(instanceId);
+        ShopPurchaseText.Context base = context(current)
+                .put("currencies", String.join(", ", currencies));
+        ShopPurchaseText.Context chosen = direct == null ? base
+                : base.copy().price(direct.currency, direct.amount);
         MenuHolder menu = new MenuHolder(player.getUniqueId(), instanceId, ui,
                 Stage.PURCHASE, currencies, direct);
-        Inventory inv = Bukkit.createInventory(menu, ShopPurchaseUi.INVENTORY_SIZE, title(ui.title()));
+        Inventory inv = Bukkit.createInventory(menu, ShopPurchaseUi.INVENTORY_SIZE,
+                title(ui.title(), chosen));
         menu.inventory = inv;
-        inv.setItem(ui.previewSlot(), preview(item));
-        String green = direct == null ? ChatColor.GREEN + "Choose payment currency"
-                : ChatColor.GREEN + "Buy for " + FurniturePricing.format(direct.amount)
-                        + " " + label(direct.currency);
-        buttonGroup(inv, ui.cancelSlots(), ui.buttonItem(), ChatColor.RED + "Cancel");
-        buttonGroup(inv, ui.purchaseSlots(), ui.buttonItem(), green);
+        inv.setItem(ui.previewSlot(), preview(item, "purchase-ui.text.preview", chosen));
+        buttonGroup(inv, ui.cancelSlots(), ui.buttonItem(),
+                "purchase-ui.text.cancel", chosen);
+        buttonGroup(inv, ui.purchaseSlots(), ui.buttonItem(),
+                direct == null ? "purchase-ui.text.choose-currency"
+                        : "purchase-ui.text.purchase", chosen);
         player.openInventory(inv);
+        send(player, "purchase-ui-opened", chosen);
     }
 
     private void showCurrencies(Player player, MenuHolder previous) {
@@ -156,7 +179,7 @@ public final class ShopPurchaseService implements Listener {
             List<String> available = offered(prices);
             if (available.isEmpty()) {
                 player.closeInventory();
-                player.sendMessage(ChatColor.RED + "This furniture no longer has any configured prices.");
+                send(player, "prices-removed", context(instance));
                 return;
             }
             if (available.size() == 1) {
@@ -167,44 +190,52 @@ public final class ShopPurchaseService implements Listener {
                     purchase(player, previous.instanceId, choice);
                 else {
                     player.closeInventory();
-                    player.sendMessage(ChatColor.RED + "This currency's provider is unavailable.");
+                    send(player, "currency-provider-unavailable",
+                            priced(instance, available.get(0), prices.cost(available.get(0))));
                 }
                 return;
             }
             ShopPurchaseUi ui = previous.ui;
             if (!ui.canDisplay(available)) {
                 player.closeInventory();
-                player.sendMessage(ChatColor.RED + "Missing configured payment buttons: "
-                        + String.join(", ", ui.missingCurrencies(available)));
+                send(player, "missing-currency-buttons", context(instance)
+                        .put("missing_currencies", String.join(", ", ui.missingCurrencies(available)))
+                        .put("currencies", String.join(", ", available)));
                 return;
             }
             MenuHolder menu = new MenuHolder(player.getUniqueId(), instance.id(), ui,
                     Stage.CURRENCY, available, null);
-            Inventory inv = Bukkit.createInventory(menu, ShopPurchaseUi.INVENTORY_SIZE, title(ui.currencyTitle()));
+            ShopPurchaseText.Context base = context(instance)
+                    .put("currencies", String.join(", ", available));
+            Inventory inv = Bukkit.createInventory(menu, ShopPurchaseUi.INVENTORY_SIZE,
+                    title(ui.currencyTitle(), base));
             menu.inventory = inv;
             ItemStack item = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId());
-            inv.setItem(ui.currencyPreviewSlot(), preview(item));
+            inv.setItem(ui.currencyPreviewSlot(), preview(item,
+                    "purchase-ui.text.currency-selection.preview", base));
             for (String currency : available) {
                 PaymentChoice option = choice(currency, prices);
                 if (option == null) {
                     player.closeInventory();
-                    player.sendMessage(ChatColor.RED + "A payment provider became unavailable.");
+                    send(player, "currency-provider-unavailable", priced(instance, currency, prices.cost(currency)));
                     return;
                 }
                 List<Integer> slots = ui.slotsForCurrency(currency);
                 for (Integer slot : slots) {
                     menu.options.put(slot, option);
                 }
-                buttonGroup(inv, slots, ui.currencyButtonItem(),
-                        (option.payment == null ? ChatColor.RED + "Currency unavailable: "
-                                : ChatColor.GREEN + "Buy for ")
-                                + FurniturePricing.format(option.amount) + " " + label(currency));
+                String generalPath = "purchase-ui.text.currency-selection."
+                        + (option.payment == null ? "unavailable" : "available");
+                String specificPath = "purchase-ui.text.currency-selection.currencies." + currency;
+                buttonGroup(inv, slots, ui.currencyButtonItem(), specificPath,
+                        generalPath, base.copy().price(currency, option.amount));
             }
             player.openInventory(inv);
+            send(player, "currency-selection-opened", base);
         } catch (RuntimeException error) {
             plugin.getLogger().log(Level.WARNING, "Could not open furniture currency selection", error);
             player.closeInventory();
-            player.sendMessage(ChatColor.RED + "Currency selection is currently unavailable.");
+            send(player, "currency-selection-unavailable", context(instance));
         }
     }
 
@@ -214,12 +245,18 @@ public final class ShopPurchaseService implements Listener {
         return amount == null ? null : new PaymentChoice(currency, amount, payment);
     }
 
-    private static void buttonGroup(Inventory inv, List<Integer> slots, String model, String displayName) {
-        ItemStack button = blankButton(model, displayName);
+    private void buttonGroup(Inventory inv, List<Integer> slots, String model,
+                             String path, ShopPurchaseText.Context context) {
+        buttonGroup(inv, slots, model, path, path, context);
+    }
+
+    private void buttonGroup(Inventory inv, List<Integer> slots, String model,
+                             String path, String fallback, ShopPurchaseText.Context context) {
+        ItemStack button = text().decorate(blankButton(model), path, fallback, context);
         for (Integer slot : slots) inv.setItem(slot, button.clone());
     }
 
-    private static ItemStack blankButton(String reference, String displayName) {
+    private static ItemStack blankButton(String reference) {
         // Same resource-style shorthand supported by VoxelCore's UI items.
         ContentID id;
         try { id = ContentID.parse(reference, "voxel"); }
@@ -230,11 +267,6 @@ public final class ShopPurchaseService implements Listener {
         ItemStack item = VoxelCore.getInstance().getItemManager().createRenderItem(id);
         if (item == null || item.getType() == Material.AIR)
             throw new IllegalArgumentException("UI button item cannot be rendered: " + reference);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(displayName);
-            item.setItemMeta(meta);
-        }
         return item;
     }
 
@@ -260,6 +292,7 @@ public final class ShopPurchaseService implements Listener {
             if (menu.ui.cancelSlots().contains(slot)) {
                 menu.actionHandled = true;
                 player.closeInventory();
+                send(player, "cancelled", context(find(menu.instanceId)));
                 return;
             }
             if (!menu.ui.purchaseSlots().contains(slot)) return;
@@ -271,24 +304,39 @@ public final class ShopPurchaseService implements Listener {
         PaymentChoice option = menu.options.get(slot);
         if (option == null) return; // ESC / inventory close is cancel for currency screen.
         if (option.payment == null) {
-            player.sendMessage(ChatColor.RED + "The " + label(option.currency) + " currency provider is unavailable.");
+            send(player, "currency-provider-unavailable",
+                    priced(find(menu.instanceId), option.currency, option.amount));
             return;
         }
         menu.actionHandled = true;
         purchase(player, menu.instanceId, option);
     }
 
-    private FurnitureInstance validTarget(Player player, UUID instanceId) {
-        FurnitureInstance instance = null;
-        for (FurnitureInstance placed : shops.layouts().placedFurniture()) {
-            if (placed.id().equals(instanceId)) { instance = placed; break; }
+    private FurnitureInstance find(UUID id) {
+        for (FurnitureInstance instance : shops.layouts().placedFurniture()) {
+            if (instance.id().equals(id)) return instance;
         }
+        return null;
+    }
+
+    private FurnitureInstance validTarget(Player player, UUID instanceId) {
+        FurnitureInstance instance = find(instanceId);
         if (instance == null || !shops.isActiveVariantFurniture(instance) || !near(player, instance)) {
             player.closeInventory();
-            player.sendMessage(ChatColor.RED + "That showroom display is no longer available.");
+            send(player, "display-unavailable", new ShopPurchaseText.Context());
             return null;
         }
         return instance;
+    }
+
+    @EventHandler
+    public void onClose(InventoryCloseEvent event) {
+        if (!(event.getInventory().getHolder() instanceof MenuHolder)
+                || !(event.getPlayer() instanceof Player)) return;
+        MenuHolder menu = (MenuHolder) event.getInventory().getHolder();
+        if (menu.actionHandled || !menu.owner.equals(event.getPlayer().getUniqueId())) return;
+        menu.actionHandled = true;
+        send((Player) event.getPlayer(), "cancelled", context(find(menu.instanceId)));
     }
 
     @EventHandler
@@ -306,40 +354,39 @@ public final class ShopPurchaseService implements Listener {
             item = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId());
         } catch (RuntimeException invalid) {
             player.closeInventory();
-            player.sendMessage(ChatColor.RED + "This furniture is unavailable.");
+            send(player, "furniture-unavailable", context(instance));
             return;
         }
         BigDecimal current = prices.cost(selected.currency);
         if (current == null || current.compareTo(selected.amount) != 0) {
             player.closeInventory();
-            player.sendMessage(ChatColor.RED + "The price changed. Open the shop again.");
+            send(player, "price-changed", priced(instance, selected.currency, selected.amount));
             return;
         }
         ShopEconomy.Payment provider = economy.resolve(selected.currency);
         if (provider == null || selected.payment == null || !selected.payment.sameProvider(provider)) {
             player.closeInventory();
-            player.sendMessage(ChatColor.RED + "Currency provider changed. Open the shop again.");
+            send(player, "provider-changed", priced(instance, selected.currency, selected.amount));
             return;
         }
         if (player.getInventory().firstEmpty() < 0) {
-            player.sendMessage(ChatColor.RED + "Make an empty inventory slot before purchasing.");
+            send(player, "inventory-full", priced(instance, selected.currency, selected.amount));
             return;
         }
 
         try {
             if (!provider.affordable(player, selected.amount)) {
-                player.sendMessage(ShopPurchaseMessages.insufficient(plugin.getConfig(),
-                        selected.currency, selected.amount, shops.layouts().displayName(instance)));
+                send(player, "insufficient-funds", priced(instance, selected.currency, selected.amount));
                 return;
             }
             if (!provider.withdraw(player, selected.amount)) {
-                player.sendMessage(ChatColor.RED + "The payment was declined by your economy provider.");
+                send(player, "payment-declined", priced(instance, selected.currency, selected.amount));
                 return;
             }
         } catch (RuntimeException failed) {
             plugin.getLogger().log(Level.SEVERE, "Economy provider failed during checkout for "
                     + player.getUniqueId() + " (" + selected.currency + "). Check balance for partial payment.", failed);
-            player.sendMessage(ChatColor.RED + "Payment could not be completed. Contact staff if your balance changed.");
+            send(player, "payment-failed", priced(instance, selected.currency, selected.amount));
             return;
         }
 
@@ -348,19 +395,18 @@ public final class ShopPurchaseService implements Listener {
             Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
             if (!leftovers.isEmpty()) {
                 refund(player, provider, selected.amount);
-                player.sendMessage(ChatColor.RED + "Delivery failed. A refund was attempted; contact staff if needed.");
+                send(player, "delivery-failed", priced(instance, selected.currency, selected.amount));
                 return;
             }
         } catch (RuntimeException failed) {
             refund(player, provider, selected.amount);
             plugin.getLogger().log(Level.SEVERE, "Furniture delivery failed after withdrawal for "
                     + player.getUniqueId(), failed);
-            player.sendMessage(ChatColor.RED + "Delivery failed. A refund was attempted; contact staff if needed.");
+            send(player, "delivery-failed", priced(instance, selected.currency, selected.amount));
             return;
         }
         player.closeInventory();
-        player.sendMessage(ChatColor.GREEN + "Purchased furniture for "
-                + FurniturePricing.format(selected.amount) + " " + label(selected.currency) + ".");
+        send(player, "purchase-success", priced(instance, selected.currency, selected.amount));
     }
 
     private void refund(Player player, ShopEconomy.Payment provider, BigDecimal amount) {

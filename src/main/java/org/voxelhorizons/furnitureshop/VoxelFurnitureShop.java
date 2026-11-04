@@ -97,6 +97,7 @@ public final class VoxelFurnitureShop extends JavaPlugin {
 
     static void validateRuntimeConfig(FileConfiguration config) {
         ShopPurchaseUi.fromConfig(config); // Reject invalid GUI hitboxes before a config reload.
+        ShopPurchaseText.validate(config); // Validate all authored message and item text mappings.
         if (config.getLong("rotation.check-interval-ticks", 100L) < 1L
                 || config.getLong("tooltip.check-interval-ticks", 5L) < 1L) {
             throw new IllegalArgumentException("Rotation and tooltip check intervals must be positive.");
