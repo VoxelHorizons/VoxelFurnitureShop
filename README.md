@@ -110,6 +110,49 @@ Manual application resolves and applies the required variants too. Automatic rot
 combination across every region; it will stop with a clear error instead of drawing an invalid combination when no
 solution exists. Requirements can be chained across multiple regions.
 
+**Required variants are exclusive during automatic rotation.** For example, when
+`left/cherry_bedroom` requires `main/cherry_archway`, the archway can only be selected if
+`left/cherry_bedroom` is also active. The planner will **not** independently combine it
+with `left/cherry_park` or other unrelated variants. If multiple variants explicitly
+require the same archway, any of those requesting variants can legitimately pair with it.
+All other (unreserved) variants remain freely selectable.
+
+**Record an alternative main-region variant**, such as `main/plain`, if another
+region can select a setup that does not require the archway. If the archway is the
+*only* recorded main variant and the left region has no compatible requester, the
+rotation now reports no compatible combination **before closing the showroom**
+rather than spawning a floating archway or leaving the shop closed mid-restock.
+This change uses your existing saved `variant require` relationships and
+does not modify stored snapshots.
+
+### Fair rotation of compatible combinations
+
+`rotation.avoid-current-variant: true` avoids repeating the **entire showroom
+layout**, rather than forcing every individual region to pick the other variant.
+Each candidate draws independently from the recorded variants, and only
+**complete, requirement-compatible layouts** are accepted. This prevents two
+unrelated two-option regions from cycling in lockstep. A bounded randomized
+search with a fallback handles heavily constrained layouts without enumerating
+every possible combination on the server's main thread.
+
+For example, the 4 November archive defines Left = Cherry Bedroom / Cherry
+Park, Right = Campsite Ground Hole / Deluxe Bedroom, Rear = Birch Commercial
+Kitchen / Dark Oak Kitchen, and Main = Cherry Bedroom Entrance **only**. Since
+that Main variant is reserved for Cherry Bedroom, there are **four compatible
+combinations**: Cherry Bedroom plus either Right variant and either Rear variant.
+Every one of those four combinations can now appear, including Campsite Ground
+Hole with Cherry Bedroom. Cherry Park cannot rotate until an alternative Main
+snapshot without the bedroom archway is recorded. After that, Park can pair
+with its plain entrance while Bedroom retains the exclusive cherry archway.
+
+If only one compatible layout exists, avoid-current is a preference and the
+planner safely repeats it rather than failing. This setting does not add or
+delete saved variants and does not bypass required-variant exclusivity.
+
+`/vfs variant apply` remains a direct editing/preview command: it applies the
+requested snapshot and its forward dependencies but does not restock every other
+region. Use a full rotation to verify cross-region exclusivity in the live showroom.
+
 Remove one dependency without deleting either setup:
 
 ```text

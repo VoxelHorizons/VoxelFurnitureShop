@@ -6,6 +6,8 @@ rotation:
   check-interval-ticks: 100
   restock-delay-ticks: 80
   reopen-delay-ticks: 20
+  # Avoid repeating the full last layout when another compatible combination exists.
+  # Independent regions may keep their current variants to allow every valid mix.
   avoid-current-variant: true
 economy:
   # Default currency for legacy numeric worth: 250.
