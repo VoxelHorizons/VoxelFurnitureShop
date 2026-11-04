@@ -94,10 +94,19 @@ public final class ShopPurchaseService implements Listener {
     private ShopPurchaseText text() { return new ShopPurchaseText(plugin.getConfig()); }
 
     private ShopPurchaseText.Context context(FurnitureInstance instance) {
+        if (instance == null) return new ShopPurchaseText.Context();
+        // Invalid item definitions can throw while the player is being shown
+        // the configurable invalid-price message. Do not rethrow from here.
+        String name;
+        try {
+            name = shops.layouts().displayName(instance);
+        } catch (RuntimeException invalidDefinition) {
+            name = instance.definitionId().toString();
+        }
         return new ShopPurchaseText.Context()
-                .put("furniture", instance == null ? "" : shops.layouts().displayName(instance))
-                .put("item", instance == null ? "" : shops.layouts().displayName(instance))
-                .put("item_id", instance == null ? "" : instance.definitionId().toString());
+                .put("furniture", name)
+                .put("item", name)
+                .put("item_id", instance.definitionId().toString());
     }
 
     private ShopPurchaseText.Context priced(FurnitureInstance instance, String currency, BigDecimal amount) {
