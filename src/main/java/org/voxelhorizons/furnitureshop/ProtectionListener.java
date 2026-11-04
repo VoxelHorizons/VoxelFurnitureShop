@@ -105,10 +105,6 @@ public final class ProtectionListener implements Listener {
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK && event.getAction() != Action.LEFT_CLICK_BLOCK) return;
         if (!shops.isControlledFixture(event.getClickedBlock())) return;
         Player player = event.getPlayer();
-        if (event.getAction() == Action.RIGHT_CLICK_BLOCK && !bypass(player)
-                && event.getHand() == org.bukkit.inventory.EquipmentSlot.HAND && purchases != null) {
-            shops.layouts().byBlock(event.getClickedBlock()).ifPresent(instance -> purchases.tryOpen(player, instance));
-        }
         if (event.getAction() == Action.LEFT_CLICK_BLOCK && bypass(player)) {
             java.util.Optional<FurnitureInstance> instance = shops.layouts().byBlock(event.getClickedBlock());
             if (instance.isPresent()) {
@@ -146,24 +142,38 @@ public final class ProtectionListener implements Listener {
         }
     }
 
-    // Display-only furniture may be targeted through its visible model rather
-    // than an interactable collision block/entity. Match the tooltip's view ray.
+    /**
+     * Every left/right click can target showroom furniture, whether Minecraft
+     * reports AIR or BLOCK. Decorative models often have no interactable block:
+     * use the exact same view-ray targeting as the visible shop tooltip.
+     *
+     * Never open a purchase on a random wall/floor click with no targeted
+     * furniture, and never interfere with an authorized showroom editor.
+     */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = false)
     public void lookingAtFurniture(PlayerInteractEvent event) {
-        if ((event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK)
-                || event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND
-                || bypass(event.getPlayer()) || purchases == null || plugin == null) return;
-        // A visual display can sit in front of an ordinary showroom block,
-        // which Minecraft reports as RIGHT_CLICK_BLOCK rather than AIR.
-        if (event.getAction() == Action.RIGHT_CLICK_BLOCK
-                && (event.getClickedBlock() == null
-                    || shops.isControlledFixture(event.getClickedBlock())
-                    || !shops.at(event.getClickedBlock().getLocation()).isPresent())) return;
+        if (!purchaseClick(event.getAction())
+                || (event.getHand() != null
+                    && event.getHand() != org.bukkit.inventory.EquipmentSlot.HAND)
+                || bypass(event.getPlayer()) || purchases == null || plugin == null
+                || !shops.isOpen() || !shops.at(event.getPlayer().getLocation()).isPresent()) return;
+
         FurnitureInstance selected = plugin.targetedFurniture(event.getPlayer());
+        // A collision block may identify its owner more accurately than the
+        // view ray (for example, an unusually thin furniture hitbox).
+        if (selected == null && event.getClickedBlock() != null
+                && shops.isControlledFixture(event.getClickedBlock())) {
+            selected = shops.layouts().byBlock(event.getClickedBlock()).orElse(null);
+        }
         if (purchases.tryOpen(event.getPlayer(), selected)) event.setCancelled(true);
     }
 
-    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)
+    static boolean purchaseClick(Action action) {
+        return action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK
+                || action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK;
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void protectFurnitureDamage(EntityDamageByEntityEvent event) {
         if (!shops.isControlledFixture(event.getEntity().getUniqueId())) return;
         if (event.getDamager() instanceof Player && bypass((Player) event.getDamager())) {
@@ -174,6 +184,13 @@ public final class ProtectionListener implements Listener {
             return;
         }
         event.setCancelled(true);
+        // LEFT_CLICK on an entity normally generates damage rather than
+        // PlayerInteractEvent. The actual furniture owner determines checkout.
+        if (purchases != null && event.getDamager() instanceof Player) {
+            Player visitor = (Player) event.getDamager();
+            shops.layouts().byEntity(event.getEntity().getUniqueId())
+                    .ifPresent(instance -> purchases.tryOpen(visitor, instance));
+        }
     }
 
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = true)

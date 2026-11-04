@@ -22,10 +22,12 @@ import org.voxelhorizons.furnitureshop.service.ShopService;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.Set;
 import java.util.logging.Level;
 
 /**
@@ -37,6 +39,9 @@ public final class ShopPurchaseService implements Listener {
     private final VoxelFurnitureShop plugin;
     private final ShopService shops;
     private final ShopEconomy economy;
+    // Furniture models can dispatch both a vanilla click and a custom event
+    // for the same gesture. Suppress duplicate attempts in the same server tick.
+    private final Set<UUID> opening = new HashSet<UUID>();
 
     public ShopPurchaseService(VoxelFurnitureShop plugin, ShopService shops) {
         this.plugin = plugin;
@@ -45,8 +50,13 @@ public final class ShopPurchaseService implements Listener {
     }
 
     public boolean tryOpen(Player player, FurnitureInstance instance) {
-        if (instance == null || !shops.isActiveVariantFurniture(instance) || shops.canEdit(player)) return false;
-        if (!near(player, instance)) return false;
+        if (player == null || instance == null || !shops.isOpen()
+                || !shops.isActiveVariantFurniture(instance) || shops.canEdit(player)
+                || !shops.at(player.getLocation()).isPresent() || !near(player, instance)) return false;
+        // An already-open shop inventory should not be recreated by a second
+        // interaction event. Also protect the one-tick opening transition.
+        if (player.getOpenInventory().getTopInventory().getHolder() instanceof MenuHolder
+                || opening.contains(player.getUniqueId())) return true;
         final FurniturePricing prices;
         try { prices = pricing(instance.definitionId()); }
         catch (IllegalArgumentException invalid) {
@@ -54,6 +64,9 @@ public final class ShopPurchaseService implements Listener {
             return true;
         }
         if (!prices.available()) return false;
+        final UUID playerId = player.getUniqueId();
+        opening.add(playerId);
+        plugin.getServer().getScheduler().runTask(plugin, () -> opening.remove(playerId));
         try {
             showPrimary(player, instance.id(), VoxelCore.getInstance().getItemManager()
                     .createItem(instance.definitionId()), prices);

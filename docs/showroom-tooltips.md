@@ -31,7 +31,7 @@ economy:
 
 ## Purchasing and currency choice
 
-The normal confirmation screen is always the first screen. It previews the furniture in slot **4** with two transparent `voxel:ui/blank` button groups: **1 and 2** cancel, **6 and 7** confirm. Your custom `:furniture_shop:` glyph draws the red X and green check over these inventory click areas.
+**Any left- or right-click while looking at purchasable showroom furniture opens checkout**, including air clicks, the furniture collision block, and clicks on its display entity. The click must target an active, priced variant inside an open showroom; random wall/floor clicks, shop fixtures, persistent decoration, and clicks by active editors do not initiate purchases. A single gesture is deduplicated across vanilla and VoxelFurniture interaction events. The normal confirmation screen is always the first screen. It previews the furniture in slot **4** with two transparent `voxel:ui/blank` button groups: **1 and 2** cancel, **6 and 7** confirm. Your custom `:furniture_shop:` glyph draws the red X and green check over these inventory click areas.
 
 - **One priced currency** (Coins *or* Tokens, or any other named currency): clicking green immediately verifies and purchases using that currency. No additional GUI is opened.
 - **Multiple currency prices configured:** clicking green opens a *currency-selection* screen using the `:furniture_shop_currency:` glyph. Left slots **1 and 2** purchase with Coins, and right slots **6 and 7** purchase with Tokens by default. Press ESC to leave the second screen without paying.
