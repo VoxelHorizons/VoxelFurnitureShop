@@ -313,7 +313,7 @@ public final class ShopPurchaseService implements Listener {
         }
         player.closeInventory();
         player.sendMessage(ChatColor.GREEN + "Purchased furniture for "
-                + FurniturePricing.format(amount) + " " + label(menu.currency) + ".");
+                + FurniturePricing.format(amount) + " " + label(menu.currency()) + ".");
     }
 
     private void refund(Player player, ShopEconomy.Payment payment, BigDecimal amount) {
