@@ -137,7 +137,7 @@ public final class ShopPurchaseService implements Listener {
         }
         MenuHolder menu = new MenuHolder(player.getUniqueId(), instanceId, ui,
                 Stage.PURCHASE, currencies, direct);
-        Inventory inv = Bukkit.createInventory(menu, 27, title(ui.title()));
+        Inventory inv = Bukkit.createInventory(menu, ShopPurchaseUi.INVENTORY_SIZE, title(ui.title()));
         menu.inventory = inv;
         inv.setItem(ui.previewSlot(), preview(item));
         String green = direct == null ? ChatColor.GREEN + "Choose payment currency"
@@ -180,7 +180,7 @@ public final class ShopPurchaseService implements Listener {
             }
             MenuHolder menu = new MenuHolder(player.getUniqueId(), instance.id(), ui,
                     Stage.CURRENCY, available, null);
-            Inventory inv = Bukkit.createInventory(menu, 27, title(ui.currencyTitle()));
+            Inventory inv = Bukkit.createInventory(menu, ShopPurchaseUi.INVENTORY_SIZE, title(ui.currencyTitle()));
             menu.inventory = inv;
             ItemStack item = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId());
             inv.setItem(ui.currencyPreviewSlot(), preview(item));
