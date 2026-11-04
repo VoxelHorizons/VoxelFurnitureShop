@@ -147,7 +147,7 @@ public final class ShopPurchaseService implements Listener {
             String currency = currencies.get(0);
             direct = choice(currency, prices);
             if (direct == null || direct.payment == null) {
-                send(player, "currency-provider-unavailable", contextForCurrency(currency, prices.cost(currency)));
+                send(player, "currency-provider-unavailable", priced(find(instanceId), currency, prices.cost(currency)));
                 return;
             }
         }
