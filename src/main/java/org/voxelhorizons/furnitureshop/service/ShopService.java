@@ -294,6 +294,10 @@ public final class ShopService {
         if (editing() || closedForEditing)
             throw new IllegalStateException("Rotation is paused while showroom editing or its protected closure is active.");
         if (rotating) throw new IllegalStateException("Showroom rotation is already running.");
+        // Check the entire variant pairing BEFORE doors close or visitors are
+        // evacuated. A missing non-exclusive fallback must not strand a shop
+        // in its CLOSED state after a delayed restock fails.
+        final Map<String, String> plan = chooseRestockPlan();
         rotating = true;
         try { close(); }
         catch (RuntimeException exception) { rotating = false; throw exception; }
@@ -301,7 +305,7 @@ public final class ShopService {
         plugin.getServer().getScheduler().runTaskLater(plugin, new Runnable() {
             @Override public void run() {
                 try {
-                    restockAllRegions();
+                    restockAllRegions(plan);
                     long reopenDelay = plugin.getConfig().getLong("rotation.reopen-delay-ticks", 20L);
                     plugin.getServer().getScheduler().runTaskLater(plugin, new Runnable() {
                         @Override public void run() { try { open(); } finally { rotating = false; } }
@@ -351,7 +355,7 @@ public final class ShopService {
         save();
     }
 
-    private void restockAllRegions() {
+    private Map<String, String> chooseRestockPlan() {
         boolean avoid = plugin.getConfig().getBoolean("rotation.avoid-current-variant", true);
         Map<String, List<String>> availableByRegion = new LinkedHashMap<String, List<String>>();
         for (Map.Entry<String, ShopCuboid> entry : showroom.regions().entrySet()) {
@@ -359,8 +363,11 @@ public final class ShopService {
             if (available.isEmpty()) { plugin.getLogger().warning("No variants recorded for region " + region); continue; }
             availableByRegion.put(region, available);
         }
-        Map<String, String> plan = VariantPlanner.choose(availableByRegion, showroom.activeVariants(),
+        return VariantPlanner.choose(availableByRegion, showroom.activeVariants(),
                 showroom.requirements(), avoid, random);
+    }
+
+    private void restockAllRegions(Map<String, String> plan) {
         for (Map.Entry<String, String> selected : plan.entrySet()) {
             layouts.apply(requiredRegion(selected.getKey()), snapshots.loadVariant(selected.getKey(), selected.getValue()),
                     showroom.furnitureGroups().values());
