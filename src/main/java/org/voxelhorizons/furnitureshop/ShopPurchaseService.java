@@ -81,11 +81,9 @@ public final class ShopPurchaseService implements Listener {
         return currency.isEmpty() ? currency : Character.toUpperCase(currency.charAt(0)) + currency.substring(1);
     }
 
-    private List<String> available(FurniturePricing prices) {
-        List<String> result = new ArrayList<String>();
-        for (String currency : prices.amounts().keySet())
-            if (economy.resolve(currency) != null) result.add(currency);
-        return result;
+    /** UI choice is based on authored prices, not temporary provider availability. */
+    private List<String> offered(FurniturePricing prices) {
+        return new ArrayList<String>(prices.amounts().keySet());
     }
 
     /** Both GUI titles resolve to VoxelCore's authored font aliases. */
@@ -101,7 +99,7 @@ public final class ShopPurchaseService implements Listener {
     }
 
     private void showPrimary(Player player, UUID instanceId, ItemStack item, FurniturePricing prices) {
-        List<String> currencies = available(prices);
+        List<String> currencies = offered(prices);
         if (currencies.isEmpty()) {
             player.sendMessage(ChatColor.RED + "This furniture has no supported currency provider.");
             return;
@@ -119,8 +117,8 @@ public final class ShopPurchaseService implements Listener {
         if (currencies.size() == 1) {
             String currency = currencies.get(0);
             direct = choice(currency, prices);
-            if (direct == null) {
-                player.sendMessage(ChatColor.RED + "Currency provider is currently unavailable.");
+            if (direct == null || direct.payment == null) {
+                player.sendMessage(ChatColor.RED + "Currency provider is currently unavailable for " + label(currency) + ".");
                 return;
             }
         }
@@ -142,18 +140,22 @@ public final class ShopPurchaseService implements Listener {
         if (instance == null) return;
         try {
             FurniturePricing prices = pricing(instance.definitionId());
-            List<String> available = available(prices);
+            List<String> available = offered(prices);
             if (available.isEmpty()) {
                 player.closeInventory();
-                player.sendMessage(ChatColor.RED + "The item's payment providers are no longer available.");
+                player.sendMessage(ChatColor.RED + "This furniture no longer has any configured prices.");
                 return;
             }
             if (available.size() == 1) {
                 // An economy plugin may have disappeared while the first UI was open.
                 PaymentChoice choice = choice(available.get(0), prices);
                 previous.actionHandled = true;
-                if (choice != null) purchase(player, previous.instanceId, choice);
-                else player.closeInventory();
+                if (choice != null && choice.payment != null)
+                    purchase(player, previous.instanceId, choice);
+                else {
+                    player.closeInventory();
+                    player.sendMessage(ChatColor.RED + "This currency's provider is unavailable.");
+                }
                 return;
             }
             ShopPurchaseUi ui = previous.ui;
@@ -181,8 +183,9 @@ public final class ShopPurchaseService implements Listener {
                     menu.options.put(slot, option);
                 }
                 buttonGroup(inv, slots, ui.currencyButtonItem(),
-                        ChatColor.GREEN + "Buy for " + FurniturePricing.format(option.amount)
-                                + " " + label(currency));
+                        (option.payment == null ? ChatColor.RED + "Currency unavailable: "
+                                : ChatColor.GREEN + "Buy for ")
+                                + FurniturePricing.format(option.amount) + " " + label(currency));
             }
             player.openInventory(inv);
         } catch (RuntimeException error) {
@@ -195,8 +198,7 @@ public final class ShopPurchaseService implements Listener {
     private PaymentChoice choice(String currency, FurniturePricing prices) {
         BigDecimal amount = prices.cost(currency);
         ShopEconomy.Payment payment = economy.resolve(currency);
-        return amount == null || payment == null ? null
-                : new PaymentChoice(currency, amount, payment);
+        return amount == null ? null : new PaymentChoice(currency, amount, payment);
     }
 
     private static void buttonGroup(Inventory inv, List<Integer> slots, String model, String displayName) {
@@ -255,6 +257,10 @@ public final class ShopPurchaseService implements Listener {
         }
         PaymentChoice option = menu.options.get(slot);
         if (option == null) return; // ESC / inventory close is cancel for currency screen.
+        if (option.payment == null) {
+            player.sendMessage(ChatColor.RED + "The " + label(option.currency) + " currency provider is unavailable.");
+            return;
+        }
         menu.actionHandled = true;
         purchase(player, menu.instanceId, option);
     }
@@ -297,7 +303,7 @@ public final class ShopPurchaseService implements Listener {
             return;
         }
         ShopEconomy.Payment provider = economy.resolve(selected.currency);
-        if (provider == null || !selected.payment.sameProvider(provider)) {
+        if (provider == null || selected.payment == null || !selected.payment.sameProvider(provider)) {
             player.closeInventory();
             player.sendMessage(ChatColor.RED + "Currency provider changed. Open the shop again.");
             return;
