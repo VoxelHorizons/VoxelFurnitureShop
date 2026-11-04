@@ -141,13 +141,41 @@ public final class ShopPurchaseService implements Listener {
         Inventory inv = Bukkit.createInventory(menu, 27, title(ui, true));
         menu.inventory = inv;
         inv.setItem(ui.previewSlot(), preview(preview));
-        if (ui.showButtonItems()) {
-            inv.setItem(ui.confirmPurchase(), icon(Material.EMERALD_BLOCK, ChatColor.GREEN + "Confirm purchase",
-                    ChatColor.GRAY + "Pay " + FurniturePricing.format(price) + " " + label(currency)));
-            inv.setItem(ui.confirmBack(), icon(Material.REDSTONE_BLOCK, ChatColor.RED + "Back"));
-            inv.setItem(ui.confirmCancel(), icon(Material.BARRIER, ChatColor.RED + "Cancel"));
+        // The font draws the red X and green check. Real VoxelCore blank model
+        // items occupy both underlying slot hitboxes for each action.
+        ItemStack cancel = confirmationButton(ui.confirmationButtonItem(),
+                ChatColor.RED + "Cancel purchase");
+        ItemStack purchase = confirmationButton(ui.confirmationButtonItem(),
+                ChatColor.GREEN + "Buy for " + FurniturePricing.format(price) + " " + label(currency));
+        for (Integer slot : ui.confirmCancelSlots()) inv.setItem(slot, cancel.clone());
+        for (Integer slot : ui.confirmPurchaseSlots()) inv.setItem(slot, purchase.clone());
+        if (ui.hasConfirmBack()) {
+            inv.setItem(ui.confirmBack(), confirmationButton(ui.confirmationButtonItem(),
+                    ChatColor.YELLOW + "Back to payment methods"));
         }
         player.openInventory(inv);
+    }
+
+    private static ItemStack confirmationButton(String reference, String label) {
+        // Mirrors VoxelCore's GUI-item shorthand: voxel:ui/blank -> voxel:ui-blank.
+        // Render-only abstract definitions are valid for UI buttons, but cannot
+        // become purchasable stock because only the real furniture ID is delivered.
+        final ContentID id;
+        try {
+            id = ContentID.parse(reference, "voxel");
+        } catch (IllegalArgumentException invalidPath) {
+            if (!reference.contains("/")) throw invalidPath;
+            id = ContentID.parse(reference.replace('/', '-'), "voxel");
+        }
+        ItemStack item = VoxelCore.getInstance().getItemManager().createRenderItem(id);
+        if (item == null || item.getType() == Material.AIR)
+            throw new IllegalArgumentException("Confirmation UI button is not renderable: " + reference);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(label);
+            item.setItemMeta(meta);
+        }
+        return item;
     }
 
     private static ItemStack preview(ItemStack item) {
@@ -216,9 +244,13 @@ public final class ShopPurchaseService implements Listener {
             showConfirmation(player, instance.id(), item, menu.page, currency, price.cost(currency), payment);
             return;
         }
-        if (slot == ui.confirmCancel()) { player.closeInventory(); return; }
-        if (slot == ui.confirmBack()) { reopen(player, menu.instanceId, menu.page); return; }
-        if (slot == ui.confirmPurchase() && !menu.confirmAttempted) {
+        if (ui.confirmCancelSlots().contains(slot)) { player.closeInventory(); return; }
+        if (ui.hasConfirmBack() && slot == ui.confirmBack()) {
+            reopen(player, menu.instanceId, menu.page); return;
+        }
+        // Double-clicking either half must never withdraw twice, including
+        // when multiple InventoryClickEvents were queued for the same menu.
+        if (ui.confirmPurchaseSlots().contains(slot) && !menu.confirmAttempted) {
             menu.confirmAttempted = true;
             purchase(player, menu);
         }

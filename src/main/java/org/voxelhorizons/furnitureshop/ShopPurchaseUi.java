@@ -10,9 +10,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Native 27-slot GUI hitboxes are configured independently from the optional
- * resource-pack font artwork. Drawn pixels outside slot boundaries cannot be
- * clicked through Bukkit InventoryClickEvent.
+ * Native 27-slot GUI hitboxes are configured separately from resource-pack
+ * artwork. Confirmation actions may span more than one inventory slot.
  */
 public final class ShopPurchaseUi {
     private static final int INVENTORY_SIZE = 27;
@@ -21,30 +20,33 @@ public final class ShopPurchaseUi {
     private final String selectionGlyph;
     private final String confirmationGlyph;
     private final boolean showButtonItems;
+    private final String confirmationButtonItem;
     private final int previewSlot;
     private final int selectCancel;
     private final int selectPrevious;
     private final int selectNext;
     private final List<Integer> currencySlots;
-    private final int confirmCancel;
-    private final int confirmPurchase;
+    private final List<Integer> confirmCancelSlots;
+    private final List<Integer> confirmPurchaseSlots;
     private final int confirmBack;
 
     private ShopPurchaseUi(String title, String selectionGlyph, String confirmationGlyph,
-                           boolean showButtonItems, int previewSlot, int selectCancel,
-                           int selectPrevious, int selectNext, List<Integer> currencySlots,
-                           int confirmCancel, int confirmPurchase, int confirmBack) {
+                           boolean showButtonItems, String confirmationButtonItem,
+                           int previewSlot, int selectCancel, int selectPrevious, int selectNext,
+                           List<Integer> currencySlots, List<Integer> confirmCancelSlots,
+                           List<Integer> confirmPurchaseSlots, int confirmBack) {
         this.title = title;
         this.selectionGlyph = selectionGlyph;
         this.confirmationGlyph = confirmationGlyph;
         this.showButtonItems = showButtonItems;
+        this.confirmationButtonItem = confirmationButtonItem;
         this.previewSlot = previewSlot;
         this.selectCancel = selectCancel;
         this.selectPrevious = selectPrevious;
         this.selectNext = selectNext;
         this.currencySlots = Collections.unmodifiableList(new ArrayList<Integer>(currencySlots));
-        this.confirmCancel = confirmCancel;
-        this.confirmPurchase = confirmPurchase;
+        this.confirmCancelSlots = Collections.unmodifiableList(new ArrayList<Integer>(confirmCancelSlots));
+        this.confirmPurchaseSlots = Collections.unmodifiableList(new ArrayList<Integer>(confirmPurchaseSlots));
         this.confirmBack = confirmBack;
     }
 
@@ -52,30 +54,61 @@ public final class ShopPurchaseUi {
         String title = config.getString("purchase-ui.title", "&8Furniture Purchase");
         if (title == null || title.trim().isEmpty())
             throw new IllegalArgumentException("purchase-ui.title cannot be empty");
-        String selectGlyph = config.getString("purchase-ui.glyphs.selection", "");
-        String confirmGlyph = config.getString("purchase-ui.glyphs.confirmation", "");
-        if (selectGlyph == null || confirmGlyph == null)
+        String selectionGlyph = config.getString("purchase-ui.glyphs.selection", "");
+        String confirmationGlyph = config.getString("purchase-ui.glyphs.confirmation", "");
+        if (selectionGlyph == null || confirmationGlyph == null)
             throw new IllegalArgumentException("Purchase UI glyphs must be strings");
+
+        String buttonItem = config.getString("purchase-ui.confirmation.button-item", "voxel:ui/blank");
+        if (buttonItem == null || buttonItem.trim().isEmpty())
+            throw new IllegalArgumentException("purchase-ui.confirmation.button-item cannot be empty");
+        buttonItem = buttonItem.trim();
 
         int preview = slot(config, "purchase-ui.preview-slot", 4);
         int selectCancel = slot(config, "purchase-ui.selection.cancel-slot", 0);
         int selectPrevious = slot(config, "purchase-ui.selection.previous-page-slot", 18);
         int selectNext = slot(config, "purchase-ui.selection.next-page-slot", 26);
-        List<Integer> currencies = slots(config, "purchase-ui.selection.currency-slots",
+        List<Integer> currencySlots = slots(config, "purchase-ui.selection.currency-slots",
                 Arrays.asList(10, 11, 12, 13, 14, 15, 16));
-        if (currencies.isEmpty())
+        if (currencySlots.isEmpty())
             throw new IllegalArgumentException("purchase-ui.selection.currency-slots cannot be empty");
-        int confirmCancel = slot(config, "purchase-ui.confirmation.cancel-slot", 0);
-        int confirmPurchase = slot(config, "purchase-ui.confirmation.purchase-slot", 8);
-        int confirmBack = slot(config, "purchase-ui.confirmation.back-slot", 18);
 
-        unique("selection", preview, selectCancel, selectPrevious, selectNext, currencies);
-        unique("confirmation", preview, confirmCancel, confirmPurchase, confirmBack,
-                Collections.<Integer>emptyList());
-        return new ShopPurchaseUi(title, selectGlyph, confirmGlyph,
-                config.getBoolean("purchase-ui.show-button-items", true), preview,
-                selectCancel, selectPrevious, selectNext, currencies,
-                confirmCancel, confirmPurchase, confirmBack);
+        // Upgrade older single-slot configs without breaking existing servers.
+        List<Integer> cancelSlots = slotsWithLegacy(config, "purchase-ui.confirmation.cancel-slots",
+                "purchase-ui.confirmation.cancel-slot", Arrays.asList(1, 2));
+        List<Integer> purchaseSlots = slotsWithLegacy(config, "purchase-ui.confirmation.purchase-slots",
+                "purchase-ui.confirmation.purchase-slot", Arrays.asList(6, 7));
+        if (cancelSlots.isEmpty() || purchaseSlots.isEmpty())
+            throw new IllegalArgumentException("Confirmation cancel/purchase slots cannot be empty");
+        // -1 explicitly disables the optional Back action, leaving only X and check.
+        int back = optionalSlot(config, "purchase-ui.confirmation.back-slot", -1);
+
+        Set<Integer> selectionUsed = new HashSet<Integer>();
+        addUnique(selectionUsed, "selection", preview);
+        addUnique(selectionUsed, "selection", selectCancel);
+        addUnique(selectionUsed, "selection", selectPrevious);
+        addUnique(selectionUsed, "selection", selectNext);
+        for (int id : currencySlots) addUnique(selectionUsed, "selection", id);
+
+        Set<Integer> confirmationUsed = new HashSet<Integer>();
+        addUnique(confirmationUsed, "confirmation", preview);
+        for (int id : cancelSlots) addUnique(confirmationUsed, "confirmation", id);
+        for (int id : purchaseSlots) addUnique(confirmationUsed, "confirmation", id);
+        if (back != -1) addUnique(confirmationUsed, "confirmation", back);
+
+        return new ShopPurchaseUi(title, selectionGlyph, confirmationGlyph,
+                config.getBoolean("purchase-ui.show-button-items", true), buttonItem,
+                preview, selectCancel, selectPrevious, selectNext, currencySlots,
+                cancelSlots, purchaseSlots, back);
+    }
+
+    private static List<Integer> slotsWithLegacy(FileConfiguration config, String listKey,
+                                                 String oldSingleKey, List<Integer> defaults) {
+        // Explicit old single-slot options must override bundled list defaults.
+        if (config.isSet(listKey)) return slots(config, listKey, defaults);
+        if (config.isSet(oldSingleKey))
+            return Collections.singletonList(slot(config, oldSingleKey, -1));
+        return slots(config, listKey, defaults);
     }
 
     private static int slot(FileConfiguration config, String key, int fallback) {
@@ -88,6 +121,14 @@ public final class ShopPurchaseUi {
                 || value < 0 || value >= INVENTORY_SIZE)
             throw new IllegalArgumentException(key + " must be a whole slot from 0 through 26");
         return (int) value;
+    }
+
+    private static int optionalSlot(FileConfiguration config, String key, int fallback) {
+        Object raw = config.get(key);
+        if (raw == null) return fallback;
+        if (raw instanceof Number && ((Number) raw).intValue() == -1
+                && ((Number) raw).doubleValue() == -1.0D) return -1;
+        return slot(config, key, fallback);
     }
 
     private static List<Integer> slots(FileConfiguration config, String key, List<Integer> fallback) {
@@ -108,30 +149,30 @@ public final class ShopPurchaseUi {
         return result;
     }
 
-    private static void unique(String screen, int preview, int a, int b, int c,
-                               List<Integer> additional) {
-        Set<Integer> used = new HashSet<Integer>();
-        for (int slot : new int[]{preview, a, b, c})
-            if (!used.add(slot))
-                throw new IllegalArgumentException("Purchase UI " + screen + " actions overlap on slot " + slot);
-        for (Integer slot : additional)
-            if (!used.add(slot))
-                throw new IllegalArgumentException("Purchase UI " + screen + " actions overlap on slot " + slot);
+    private static void addUnique(Set<Integer> used, String screen, int slot) {
+        if (!used.add(slot))
+            throw new IllegalArgumentException("Purchase UI " + screen + " actions overlap on slot " + slot);
     }
 
-    /** A glyph alias such as :shop_purchase_selection: is resolved by VoxelCore. */
+    /** A glyph alias such as :shop_purchase_confirmation: is resolved by VoxelCore. */
     public String title(boolean confirmation) {
         String glyph = confirmation ? confirmationGlyph : selectionGlyph;
         return glyph.trim().isEmpty() ? title : glyph;
     }
 
     public boolean showButtonItems() { return showButtonItems; }
+    public String confirmationButtonItem() { return confirmationButtonItem; }
     public int previewSlot() { return previewSlot; }
     public int selectCancel() { return selectCancel; }
     public int selectPrevious() { return selectPrevious; }
     public int selectNext() { return selectNext; }
     public List<Integer> currencySlots() { return currencySlots; }
-    public int confirmCancel() { return confirmCancel; }
-    public int confirmPurchase() { return confirmPurchase; }
+    public List<Integer> confirmCancelSlots() { return confirmCancelSlots; }
+    public List<Integer> confirmPurchaseSlots() { return confirmPurchaseSlots; }
+    public boolean hasConfirmBack() { return confirmBack >= 0; }
     public int confirmBack() { return confirmBack; }
+
+    /** Deprecated single-slot accessors retained for previous integrations. */
+    @Deprecated public int confirmCancel() { return confirmCancelSlots.get(0); }
+    @Deprecated public int confirmPurchase() { return confirmPurchaseSlots.get(0); }
 }

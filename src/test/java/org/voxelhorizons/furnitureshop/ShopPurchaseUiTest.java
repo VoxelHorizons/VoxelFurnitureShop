@@ -18,9 +18,9 @@ public class ShopPurchaseUiTest {
         assertEquals(18, ui.selectPrevious());
         assertEquals(26, ui.selectNext());
         assertEquals(Arrays.asList(10, 11, 12, 13, 14, 15, 16), ui.currencySlots());
-        assertEquals(0, ui.confirmCancel());
-        assertEquals(8, ui.confirmPurchase());
-        assertEquals(18, ui.confirmBack());
+        assertEquals(Arrays.asList(1, 2), ui.confirmCancelSlots());
+        assertEquals(Arrays.asList(6, 7), ui.confirmPurchaseSlots());
+        assertEquals(-1, ui.confirmBack());
     }
 
     @Test public void configurableGlyphsAndHitboxes() {
@@ -55,7 +55,7 @@ public class ShopPurchaseUiTest {
     @Test(expected = IllegalArgumentException.class)
     public void rejectsPreviewOverlappingPurchaseButton() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.preview-slot", 8);
+        config.set("purchase-ui.preview-slot", 6);
         ShopPurchaseUi.fromConfig(config);
     }
 
@@ -94,6 +94,47 @@ public class ShopPurchaseUiTest {
         ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(config);
         assertFalse(ui.showButtonItems());
         assertEquals(Arrays.asList(11, 15), ui.currencySlots());
-        assertEquals(8, ui.confirmPurchase());
+        assertEquals(6, ui.confirmPurchase());
+    }
+
+    @Test public void groupedActionsMatchTextureAndBlankItem() {
+        ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(new YamlConfiguration());
+        assertEquals("voxel:ui/blank", ui.confirmationButtonItem());
+        assertEquals(4, ui.previewSlot());
+        assertEquals(Arrays.asList(1, 2), ui.confirmCancelSlots());
+        assertEquals(Arrays.asList(6, 7), ui.confirmPurchaseSlots());
+        assertFalse(ui.hasConfirmBack());
+    }
+
+    @Test public void legacySingleSlotKeysRemainAccepted() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("purchase-ui.confirmation.cancel-slot", 0);
+        config.set("purchase-ui.confirmation.purchase-slot", 8);
+        config.set("purchase-ui.confirmation.back-slot", 18);
+        ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(config);
+        assertEquals(Collections.singletonList(0), ui.confirmCancelSlots());
+        assertEquals(Collections.singletonList(8), ui.confirmPurchaseSlots());
+        assertTrue(ui.hasConfirmBack());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsOverlappingConfirmationButtonGroups() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("purchase-ui.confirmation.cancel-slots", Arrays.asList(1, 6));
+        ShopPurchaseUi.fromConfig(config);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsDuplicateButtonHitboxes() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("purchase-ui.confirmation.purchase-slots", Arrays.asList(6, 6));
+        ShopPurchaseUi.fromConfig(config);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsOutOfRangeGroupedSlot() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("purchase-ui.confirmation.cancel-slots", Arrays.asList(1, 27));
+        ShopPurchaseUi.fromConfig(config);
     }
 }

@@ -55,12 +55,18 @@ purchase-ui:
     next-page-slot: 26
     currency-slots: [10, 11, 12, 13, 14, 15, 16]
   confirmation:
-    cancel-slot: 0
-    purchase-slot: 8
-    back-slot: 18
+    # The actual item key is voxel:ui-blank, but resource-path notation works.
+    button-item: "voxel:ui/blank"
+    # Two hitboxes for each painted button; either slot triggers its action.
+    cancel-slots: [1, 2]
+    purchase-slots: [6, 7]
+    # No visible Back button in this texture.
+    back-slot: -1
 ```
 
 The glyph IDs above are examples, **not bundled assets**. Use your own authored VoxelCore font aliases. `selection` is displayed while the player chooses a currency; `confirmation` is shown after selection. No font textures are generated or distributed by VoxelFurnitureShop.
+
+**Compact confirmation layout:** The purchasable furniture item occupies slot **4**. Both **1 and 2** activate Cancel, while **6 and 7** activate Purchase. Each of these four hitboxes contains the `voxel:ui/blank` VoxelCore render item (resource-style alias for `voxel:ui-blank`); the visible red X and green check come from your custom font UI texture. Buttons are click-active even though their item models are transparent. Purchase attempts are guarded so multiple clicks cannot charge twice. The screenshot has no Back button, so `back-slot: -1` disables it. Older `cancel-slot` and `purchase-slot` single-index settings remain accepted for existing configs.
 
 ### Click actions
 
@@ -71,11 +77,11 @@ The glyph IDs above are examples, **not bundled assets**. Use your own authored 
 | Selection | `currency-slots` | Each slot selects the currency at that page index, opens confirmation, and stores its price quote |
 | Selection | `previous-page-slot` | Goes to the preceding currency page when available |
 | Selection | `next-page-slot` | Goes to the next currency page when available |
-| Confirmation | `cancel-slot` | Closes the menu without payment |
-| Confirmation | `purchase-slot` | Checks funds, showroom state and current quote; pays and delivers one item |
-| Confirmation | `back-slot` | Returns to the currency selection page |
+| Confirmation | `cancel-slots` | Either slot in the red X region cancels without payment |
+| Confirmation | `purchase-slots` | Either slot in the green check region confirms one purchase |
+| Confirmation | `back-slot` | Optional return action; set `-1` to disable for compact layouts |
 
-Currency buttons are assigned in the **order given by the `currency-slots` list**. Page size is the number of slots in that list; you may configure fewer than seven choices per page. `show-button-items: true` displays ordinary Minecraft button items, helpful before your artwork is ready. Set it to `false` to make those slots invisible while preserving click actions; currency options are still routed by their slot positions. Only the central furniture preview item stays visible.
+Currency buttons are assigned in the **order given by the `currency-slots` list**. Page size is the number of slots in that list; you may configure fewer than seven choices per page. `show-button-items: true` displays ordinary Minecraft button items, helpful before your artwork is ready. Set it to `false` to hide the normal selection buttons while preserving click actions. On the confirmation screen, transparent `voxel:ui/blank` button items are placed in all configured cancel and purchase slots regardless of this setting, with the furniture item visible at slot 4.
 
 **Important client constraint:** The font texture is rendered visually over a vanilla inventory, but Bukkit only reports mouse clicks on the inventory's actual slot rectangles. Decorative buttons painted above/beside the slot grid (such as the top-left X or top-right check in the supplied mock-up) cannot be clicked without an alternative interaction mechanism. Place clickable artwork over inventory slots, then configure the indices accordingly. No ProtocolLib, PacketEvents or other packet plugin is needed.
 

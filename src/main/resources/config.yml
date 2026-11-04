@@ -55,6 +55,10 @@ purchase-ui:
     # Payment options fill these hitboxes in this order, one currency per slot.
     currency-slots: [10, 11, 12, 13, 14, 15, 16]
   confirmation:
-    cancel-slot: 0
-    purchase-slot: 8
-    back-slot: 18
+    # The actual item key is voxel:ui-blank, but resource-path notation works.
+    button-item: "voxel:ui/blank"
+    # Two hitboxes for each painted button; either slot triggers its action.
+    cancel-slots: [1, 2]
+    purchase-slots: [6, 7]
+    # No visible Back button in this texture.
+    back-slot: -1
