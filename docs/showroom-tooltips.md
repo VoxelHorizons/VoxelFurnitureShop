@@ -33,10 +33,10 @@ economy:
 
 The normal confirmation screen is always the first screen. It previews the furniture in slot **4** with two transparent `voxel:ui/blank` button groups: **1 and 2** cancel, **6 and 7** confirm. Your custom `:furniture_shop:` glyph draws the red X and green check over these inventory click areas.
 
-- **One currency available** (Coins *or* Tokens, or any other named currency): clicking green immediately verifies and purchases using that currency. No additional GUI is opened.
-- **Multiple currencies available:** clicking green opens a *currency-selection* screen using the `:furniture_shop_currency:` glyph. Left slots **1 and 2** purchase with Coins, and right slots **6 and 7** purchase with Tokens by default. Press ESC to leave the second screen without paying.
+- **One priced currency** (Coins *or* Tokens, or any other named currency): clicking green immediately verifies and purchases using that currency. No additional GUI is opened.
+- **Multiple currency prices configured:** clicking green opens a *currency-selection* screen using the `:furniture_shop_currency:` glyph. Left slots **1 and 2** purchase with Coins, and right slots **6 and 7** purchase with Tokens by default. Press ESC to leave the second screen without paying.
 - The second screen uses the **same furniture preview** (slot 4). Its currency buttons trigger purchases directly; there is no third screen and no right-click-to-cycle mechanism.
-- Currency IDs are never hard-coded into payment logic. The `currency-selection.currencies` mapping associates **arbitrary provider currency IDs** with the inventory slots drawn by the corresponding custom UI glyph. Add entries for `gems`, `credits`, etc., if your furniture uses those names. Every available currency must have a configured set of click slots when more than one option is offered.
+- Currency IDs are never hard-coded into payment logic. The `currency-selection.currencies` mapping associates **arbitrary provider currency IDs** with the inventory slots drawn by the corresponding custom UI glyph. Add entries for `gems`, `credits`, etc., if your furniture uses those names. Every configured currency must have a set of click slots when more than one price is offered. If a provider is currently offline, its button is marked unavailable and will not charge the player.
 - A server with only Vault's single unnamed currency can use the legacy alias; VaultUnlocked supplies any named currencies registered by its economy provider. Each option spends **only that currency**, never a combination.
 
 ```yaml
