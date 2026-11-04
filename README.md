@@ -120,8 +120,9 @@ All other (unreserved) variants remain freely selectable.
 **Record an alternative main-region variant**, such as `main/plain`, if another
 region can select a setup that does not require the archway. If the archway is the
 *only* recorded main variant and the left region has no compatible requester, the
-rotation correctly reports no compatible combination rather than spawning a floating
-archway. This change uses your existing saved `variant require` relationships and
+rotation now reports no compatible combination **before closing the showroom**
+rather than spawning a floating archway or leaving the shop closed mid-restock.
+This change uses your existing saved `variant require` relationships and
 does not modify stored snapshots.
 
 `/vfs variant apply` remains a direct editing/preview command: it applies the
