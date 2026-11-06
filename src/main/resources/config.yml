@@ -20,6 +20,8 @@ tooltip:
   enabled: true
   tooltip: default
   # Only active-variant furniture gets tooltips; fixtures are excluded.
+  # Targeting uses exact interaction hitboxes and requires clear sight through solid blocks.
+  # Other furniture, including decorative bins and dumpsters, blocks background selections.
   # A missing furniture value selects the alternative second and third lines.
   max-distance: 5.0
   check-interval-ticks: 5
