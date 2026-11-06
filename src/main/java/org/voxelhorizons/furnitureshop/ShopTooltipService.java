@@ -164,31 +164,86 @@ public final class ShopTooltipService {
 
     private FurnitureInstance target(Player player, LayoutService furniture) {
         Location eye = player.getEyeLocation();
-        double ox = eye.getX(), oy = eye.getY(), oz = eye.getZ();
         org.bukkit.util.Vector facing = eye.getDirection().normalize();
         double closest = distance;
         FurnitureInstance selected = null;
+
+        // Test ALL furniture, not just priced/active displays. A bin, dumpster or
+        // persistent decoration in front must hide the showroom item behind it.
         for (FurnitureInstance instance : furniture.placedFurniture()) {
-            if (!shops.isActiveVariantFurniture(instance)) continue;
             Location loc = instance.location();
             if (loc.getWorld() != eye.getWorld()) continue;
             Optional<FurnitureDefinition> definition = furniture.definition(instance);
             if (!definition.isPresent()) continue;
             FurnitureDefinition shape = definition.get();
-            // Hitbox is frequently much smaller than the visual model. Use an expanded
-            // volume around the rotated hitbox so looking at visible edges still targets it.
-            double width = Math.max(1.0D, shape.width() * Math.max(shape.scaleX(), shape.scaleZ()));
-            double h = Math.max(1.5D, shape.height() * shape.scaleY());
-            double yaw = Math.toRadians(instance.yaw());
-            double cx = loc.getX() + shape.hitboxOffsetX() * Math.cos(yaw) - shape.hitboxOffsetZ() * Math.sin(yaw);
-            double cz = loc.getZ() + shape.hitboxOffsetX() * Math.sin(yaw) + shape.hitboxOffsetZ() * Math.cos(yaw);
-            double ymin = loc.getY() + shape.hitboxOffsetY();
-            double t = rayBox(ox, oy, oz, facing.getX(), facing.getY(), facing.getZ(),
-                    cx - width / 2, ymin, cz - width / 2,
-                    cx + width / 2, ymin + h, cz + width / 2);
-            if (t >= 0 && t < closest) { selected = instance; closest = t; }
+
+            // DISPLAY interaction entities use the configured width/height directly.
+            // Their size is NOT multiplied by the visual model's scale, and their
+            // hitbox is not artificially extended to a full block or 1.5 blocks.
+            float yaw = Float.isFinite(instance.renderedYaw())
+                    ? instance.renderedYaw() : instance.yaw();
+            double t = rayFurniture(eye, facing, loc, yaw,
+                    shape.width(), shape.height(),
+                    shape.hitboxOffsetX(), shape.hitboxOffsetY(), shape.hitboxOffsetZ());
+            if (t >= 0.0D && t < closest) {
+                closest = t;
+                selected = instance;
+            }
         }
+
+        if (selected == null || !shops.isActiveVariantFurniture(selected)) return null;
+        // Do not show overlays or allow view-ray purchases through walls,
+        // windows, other solid blocks or another furniture's collision blocks.
+        if (blockedByWorld(eye, facing, closest, selected, furniture)) return null;
         return selected;
+    }
+
+    /**
+     * Intersect the actual interaction volume, not the scaled visual model's
+     * approximate bounds. Interaction hitboxes stay axis-aligned after their
+     * local offset is rotated into world space.
+     */
+    static double rayFurniture(Location eye, org.bukkit.util.Vector direction, Location origin,
+                               float yaw, double width, double height,
+                               double offsetX, double offsetY, double offsetZ) {
+        if (!Double.isFinite(width) || !Double.isFinite(height)
+                || width <= 0.0D || height <= 0.0D) return -1.0D;
+        double radians = Math.toRadians(yaw);
+        double cx = origin.getX() + offsetX * Math.cos(radians) - offsetZ * Math.sin(radians);
+        double cz = origin.getZ() + offsetX * Math.sin(radians) + offsetZ * Math.cos(radians);
+        double ymin = origin.getY() + offsetY;
+        return rayBox(eye.getX(), eye.getY(), eye.getZ(),
+                direction.getX(), direction.getY(), direction.getZ(),
+                cx - width / 2.0D, ymin, cz - width / 2.0D,
+                cx + width / 2.0D, ymin + height, cz + width / 2.0D);
+    }
+
+    /** First solid block before the furniture hit prevents selection. */
+    private boolean blockedByWorld(Location eye, org.bukkit.util.Vector facing, double targetDistance,
+                                   FurnitureInstance selected, LayoutService furniture) {
+        org.bukkit.util.BlockIterator blocks = new org.bukkit.util.BlockIterator(
+                eye.getWorld(), eye.toVector(), facing, 0.0D,
+                Math.max(1, (int) Math.ceil(targetDistance) + 1));
+        while (blocks.hasNext()) {
+            org.bukkit.block.Block block = blocks.next();
+            if (!block.getType().isSolid()) continue;
+            double hit = rayBox(eye.getX(), eye.getY(), eye.getZ(),
+                    facing.getX(), facing.getY(), facing.getZ(),
+                    block.getX(), block.getY(), block.getZ(),
+                    block.getX() + 1.0D, block.getY() + 1.0D, block.getZ() + 1.0D);
+            if (!beforeTarget(hit, targetDistance)) continue;
+
+            // Furniture can own solid collision blocks within its interaction
+            // hitbox. Those must not conceal their own tooltip.
+            Optional<FurnitureInstance> owner = furniture.byBlock(block);
+            if (owner.isPresent() && owner.get().id().equals(selected.id())) continue;
+            return true;
+        }
+        return false;
+    }
+
+    static boolean beforeTarget(double obstacleDistance, double targetDistance) {
+        return obstacleDistance >= 0.0D && obstacleDistance < targetDistance - 1.0E-6D;
     }
 
     public String diagnostics(Player player) {
