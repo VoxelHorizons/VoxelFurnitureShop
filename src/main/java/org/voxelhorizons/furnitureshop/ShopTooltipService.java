@@ -211,7 +211,11 @@ public final class ShopTooltipService {
         double radians = Math.toRadians(yaw);
         double cx = origin.getX() + offsetX * Math.cos(radians) - offsetZ * Math.sin(radians);
         double cz = origin.getZ() + offsetX * Math.sin(radians) + offsetZ * Math.cos(radians);
-        double ymin = origin.getY() + offsetY;
+        // VoxelFurniture spawns its INTERACTION entity at offsetY + height/2.
+        // Minecraft entity bounding boxes extend upward from that location.
+        // Using offsetY alone shifts targeting down by half the hitbox height:
+        // aiming below a shelf selects it while its upper half is missed.
+        double ymin = origin.getY() + offsetY + height / 2.0D;
         return rayBox(eye.getX(), eye.getY(), eye.getZ(),
                 direction.getX(), direction.getY(), direction.getZ(),
                 cx - width / 2.0D, ymin, cz - width / 2.0D,
