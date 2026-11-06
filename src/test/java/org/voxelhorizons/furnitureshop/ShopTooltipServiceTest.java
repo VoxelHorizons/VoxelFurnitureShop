@@ -45,9 +45,22 @@ public class ShopTooltipServiceTest {
         org.bukkit.Location beside = new org.bukkit.Location(null, 0.6D, 1, 0);
         assertTrue(ShopTooltipService.rayFurniture(beside, forward, origin,
                 0.0F, 1.0D, 2.0D, 0, 0, 0) < 0);
-        org.bukkit.Location above = new org.bukkit.Location(null, 0, 1.4D, 0);
+        org.bukkit.Location above = new org.bukkit.Location(null, 0, 1.6D, 0);
         assertTrue(ShopTooltipService.rayFurniture(above, forward, origin,
                 0.0F, 1.0D, 1.0D, 0, 0, 0) < 0);
+    }
+
+    @Test public void interactionHitboxMatchesVoxelFurnitureHalfHeightSpawnOffset() {
+        org.bukkit.Location origin = new org.bukkit.Location(null, 0, 0, 3);
+        org.bukkit.util.Vector forward = new org.bukkit.util.Vector(0, 0, 1);
+        // For height 1, VoxelFurniture spawns the interaction entity at Y=0.5.
+        // The native entity box extends from Y=0.5 through Y=1.5.
+        org.bukkit.Location below = new org.bukkit.Location(null, 0, 0.25D, 0);
+        org.bukkit.Location upperHalf = new org.bukkit.Location(null, 0, 1.25D, 0);
+        assertTrue(ShopTooltipService.rayFurniture(below, forward, origin,
+                0.0F, 1.0D, 1.0D, 0, 0, 0) < 0);
+        assertEquals(2.5D, ShopTooltipService.rayFurniture(upperHalf, forward, origin,
+                0.0F, 1.0D, 1.0D, 0, 0, 0), 0.00001D);
     }
 
     @Test public void rotatedFurnitureOffsetsMatchVoxelFurnitureInteractionPositions() {
