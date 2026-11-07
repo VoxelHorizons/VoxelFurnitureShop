@@ -11,46 +11,91 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 public class ShopPurchaseUiTest {
-    @Test public void defaultsMatchBothAuthoredTextures() {
+    @Test public void defaultsUseNativeThreeRowChestForBothScreens() {
+        assertEquals(27, ShopPurchaseUi.INVENTORY_SIZE);
         ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(new YamlConfiguration());
         assertEquals(":offset_-8::furniture_shop::offset_8:&rPurchase Furniture", ui.title());
         assertEquals("voxel:ui/blank", ui.buttonItem());
-        assertEquals(4, ui.previewSlot());
-        assertEquals(Arrays.asList(1, 2), ui.cancelSlots());
-        assertEquals(Arrays.asList(6, 7), ui.purchaseSlots());
+        assertEquals(13, ui.previewSlot());
+        assertEquals(Arrays.asList(10, 11), ui.cancelSlots());
+        assertEquals(Arrays.asList(15, 16), ui.purchaseSlots());
         assertEquals(":offset_-8::furniture_shop_currency::offset_8:&rSelect Currency",
                 ui.currencyTitle());
         assertEquals("voxel:ui/blank", ui.currencyButtonItem());
-        assertEquals(4, ui.currencyPreviewSlot());
-        assertEquals(Arrays.asList(1, 2), ui.slotsForCurrency("coins"));
-        assertEquals(Arrays.asList(6, 7), ui.slotsForCurrency("TOKENS"));
+        assertEquals(13, ui.currencyPreviewSlot());
+        assertEquals(Arrays.asList(10, 11), ui.slotsForCurrency("coins"));
+        assertEquals(Arrays.asList(15, 16), ui.slotsForCurrency("TOKENS"));
     }
 
     @Test public void customCurrencySlotsAreNotLimitedToCoinsAndTokens() {
         YamlConfiguration config = new YamlConfiguration();
+        config.set("purchase-ui.slot-layout-version", 2);
         config.set("purchase-ui.title", ":my_shop:");
         config.set("purchase-ui.button-item", "voxel:cancel_blank");
-        config.set("purchase-ui.preview-slot", 3);
-        config.set("purchase-ui.cancel-slots", Arrays.asList(0, 1));
-        config.set("purchase-ui.purchase-slots", Arrays.asList(7, 8));
+        config.set("purchase-ui.preview-slot", 12);
+        config.set("purchase-ui.cancel-slots", Arrays.asList(9, 10));
+        config.set("purchase-ui.purchase-slots", Arrays.asList(16, 17));
         config.set("purchase-ui.currency-selection.title", ":my_currency_shop:");
         config.set("purchase-ui.currency-selection.button-item", "voxel:currency_blank");
-        config.set("purchase-ui.currency-selection.preview-slot", 4);
-        config.set("purchase-ui.currency-selection.currencies.gems", Arrays.asList(1, 2));
-        config.set("purchase-ui.currency-selection.currencies.credits", Arrays.asList(6, 7));
+        config.set("purchase-ui.currency-selection.preview-slot", 13);
+        config.set("purchase-ui.currency-selection.currencies.gems", Arrays.asList(10, 11));
+        config.set("purchase-ui.currency-selection.currencies.credits", Arrays.asList(15, 16));
 
         ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(config);
         assertEquals(":my_shop:", ui.title());
         assertEquals(":my_currency_shop:", ui.currencyTitle());
         assertEquals("voxel:cancel_blank", ui.buttonItem());
         assertEquals("voxel:currency_blank", ui.currencyButtonItem());
-        assertEquals(3, ui.previewSlot());
-        assertEquals(Arrays.asList(0, 1), ui.cancelSlots());
-        assertEquals(Arrays.asList(7, 8), ui.purchaseSlots());
+        assertEquals(12, ui.previewSlot());
+        assertEquals(Arrays.asList(9, 10), ui.cancelSlots());
+        assertEquals(Arrays.asList(16, 17), ui.purchaseSlots());
         assertTrue(ui.canDisplay(Arrays.asList("GEMS", "credits")));
         assertFalse(ui.canDisplay(Arrays.asList("gems", "tokens")));
         assertEquals(Collections.singletonList("tokens"),
                 ui.missingCurrencies(Arrays.asList("gems", "tokens")));
+    }
+
+    @Test public void existingOneRowConfigIsShiftedDownWithoutManualEditing() {
+        YamlConfiguration old = new YamlConfiguration();
+        // A previous install's config.yml does not have slot-layout-version.
+        old.set("purchase-ui.preview-slot", 4);
+        old.set("purchase-ui.cancel-slots", Arrays.asList(1, 2));
+        old.set("purchase-ui.purchase-slots", Arrays.asList(6, 7));
+        old.set("purchase-ui.currency-selection.preview-slot", 4);
+        old.set("purchase-ui.currency-selection.currencies.coins", Arrays.asList(1, 2));
+        old.set("purchase-ui.currency-selection.currencies.tokens", Arrays.asList(6, 7));
+        ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(old);
+        assertEquals(13, ui.previewSlot());
+        assertEquals(Arrays.asList(10, 11), ui.cancelSlots());
+        assertEquals(Arrays.asList(15, 16), ui.purchaseSlots());
+        assertEquals(13, ui.currencyPreviewSlot());
+        assertEquals(Arrays.asList(10, 11), ui.slotsForCurrency("coins"));
+        assertEquals(Arrays.asList(15, 16), ui.slotsForCurrency("tokens"));
+    }
+
+    @Test public void threeRowConfigCanUseAnyRowWithoutImplicitMigration() {
+        YamlConfiguration current = new YamlConfiguration();
+        current.set("purchase-ui.slot-layout-version", 2);
+        current.set("purchase-ui.preview-slot", 22);
+        current.set("purchase-ui.cancel-slots", Arrays.asList(0, 1));
+        current.set("purchase-ui.purchase-slots", Arrays.asList(25, 26));
+        current.set("purchase-ui.currency-selection.preview-slot", 13);
+        current.set("purchase-ui.currency-selection.currencies.coins", Arrays.asList(0, 1));
+        current.set("purchase-ui.currency-selection.currencies.tokens", Arrays.asList(25, 26));
+        ShopPurchaseUi ui = ShopPurchaseUi.fromConfig(current);
+        assertEquals(22, ui.previewSlot());
+        assertEquals(Arrays.asList(0, 1), ui.cancelSlots());
+        assertEquals(Arrays.asList(25, 26), ui.purchaseSlots());
+        assertEquals(13, ui.currencyPreviewSlot());
+        assertEquals(Arrays.asList(0, 1), ui.slotsForCurrency("coins"));
+        assertEquals(Arrays.asList(25, 26), ui.slotsForCurrency("tokens"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsInvalidSlotLayoutVersion() {
+        YamlConfiguration config = new YamlConfiguration();
+        config.set("purchase-ui.slot-layout-version", 3);
+        ShopPurchaseUi.fromConfig(config);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -85,28 +130,28 @@ public class ShopPurchaseUiTest {
     @Test(expected = IllegalArgumentException.class)
     public void rejectsOutOfRangeSlots() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.currency-selection.currencies.tokens", Arrays.asList(6, 9));
+        config.set("purchase-ui.currency-selection.currencies.tokens", Arrays.asList(15, 27));
         ShopPurchaseUi.fromConfig(config);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsNineAsPrimaryPreviewSlot() {
+    public void rejectsTwentySevenAsPrimaryPreviewSlot() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.preview-slot", 9);
+        config.set("purchase-ui.preview-slot", 27);
         ShopPurchaseUi.fromConfig(config);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsNineAsPurchaseButtonSlot() {
+    public void rejectsTwentySevenAsPurchaseButtonSlot() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.purchase-slots", Arrays.asList(6, 9));
+        config.set("purchase-ui.purchase-slots", Arrays.asList(15, 27));
         ShopPurchaseUi.fromConfig(config);
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void rejectsNineAsCurrencyPreviewSlot() {
+    public void rejectsTwentySevenAsCurrencyPreviewSlot() {
         YamlConfiguration config = new YamlConfiguration();
-        config.set("purchase-ui.currency-selection.preview-slot", 9);
+        config.set("purchase-ui.currency-selection.preview-slot", 27);
         ShopPurchaseUi.fromConfig(config);
     }
 
