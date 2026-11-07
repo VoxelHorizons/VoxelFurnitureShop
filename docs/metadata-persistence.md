@@ -96,6 +96,9 @@ During restock, it resends the mask after real world updates and periodically
 while rotation is active so players joining or approaching later also see
 the blackout. On successful reopening, restock failure, scheduling failure
 or plugin disable, the mask is removed using the latest real block states.
+On modern Paper, the restore also sends public `TileState` updates for
+signs, containers and other tile entities, so clients do not retain a
+blank tile after the temporary fake blocks disappear.
 
 ```yaml
 rotation:
