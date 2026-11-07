@@ -43,6 +43,8 @@ final class RotationBlackout {
     private final Method modernSend;
     private final Method modernBlockData;
     private final Method modernCreateBlockData;
+    private final Method modernTileUpdate;
+    private final Class<?> tileStateClass;
     private final Material maskMaterial;
     private final Set<UUID> exposed = new HashSet<UUID>();
     private List<Cell> cells = Collections.emptyList();
@@ -55,12 +57,21 @@ final class RotationBlackout {
         this.plugin = plugin;
         Material selected = Material.matchMaterial("BLACK_CONCRETE");
         maskMaterial = selected == null ? Material.COAL_BLOCK : selected;
-        Method send = null, get = null, create = null;
+        Method send = null, get = null, create = null, tileUpdate = null;
+        Class<?> tileClass = null;
         try {
             Class<?> dataClass = Class.forName("org.bukkit.block.data.BlockData");
             send = Player.class.getMethod("sendBlockChange", Location.class, dataClass);
             get = Block.class.getMethod("getBlockData");
             create = Material.class.getMethod("createBlockData");
+            try {
+                tileClass = Class.forName("org.bukkit.block.TileState");
+                tileUpdate = Player.class.getMethod("sendBlockUpdate", Location.class, tileClass);
+            } catch (ClassNotFoundException ignored) {
+                // Some legacy servers expose BlockData but not TileState.
+            } catch (NoSuchMethodException ignored) {
+                // Paper's client-side tile state update API is optional.
+            }
         } catch (ClassNotFoundException ignored) {
             // The 1.12 API has no BlockData; use the old material + data API.
         } catch (NoSuchMethodException ignored) {
@@ -69,6 +80,8 @@ final class RotationBlackout {
         modernSend = send;
         modernBlockData = get;
         modernCreateBlockData = create;
+        modernTileUpdate = tileUpdate;
+        tileStateClass = tileClass;
     }
 
     /**
@@ -176,6 +189,15 @@ final class RotationBlackout {
             Object blockData = blackout ? maskData : modernBlockData.invoke(world.getBlockAt(cell.x, cell.y, cell.z));
             try {
                 modernSend.invoke(player, at, blockData);
+                // A client that was shown an opaque fake block may have
+                // discarded the previous sign/container/skull TileState NBT.
+                // Restore the latest public Bukkit tile snapshot after its
+                // real block state, avoiding blank signs after a restock.
+                if (!blackout && modernTileUpdate != null && tileStateClass != null) {
+                    Object state = world.getBlockAt(cell.x, cell.y, cell.z).getState();
+                    if (tileStateClass.isInstance(state))
+                        modernTileUpdate.invoke(player, at, state);
+                }
             } catch (InvocationTargetException error) {
                 Throwable cause = error.getCause();
                 throw new IllegalStateException("Native client-side block change failed", cause);
