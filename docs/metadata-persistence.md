@@ -27,6 +27,19 @@ VoxelFurniture generates them from the restored logical furniture instance.
 Arbitrary private NMS or third-party runtime state that is not exposed through
 Bukkit, VoxelCore or VoxelFurniture cannot be promised to survive a rotation.
 
+## Purchasing dyed displays
+
+The shop purchase preview, currency-selection preview and final delivery
+now derive from the **actual displayed furniture instance**. If the fixture
+has a saved `dye_color`, VoxelCore's native `setDyeColor` applies that
+colour to the delivered ItemStack, retaining its custom model colour
+metadata. A mismatch where the display is coloured but its purchased item
+is not dyeable fails explicitly rather than selling the wrong item.
+
+Furniture *storage contents* are shop-fixture state, not part of a purchase
+reward. Buying a dresser does not duplicate everything stored inside the
+showroom display.
+
 ## When state is written
 
 Before a daily/random restock, manual variant application, or variant clear,
@@ -74,7 +87,9 @@ dependency has not yet been updated.
    changes made while an inventory is open; reopen, rotate and inspect again.
 6. Test native tile inventories, PDC-equipped containers, custom heads,
    signs, and door state transitions. Restart and repeat.
-7. Test the old dependency deliberately: populated furniture inventory
+7. Purchase a recoloured furniture display: both preview and delivered item
+   should have the matching RGB metadata, and fixture storage must not be gifted.
+8. Test the old dependency deliberately: populated furniture inventory
    snapshots should **abort safely**, not clear or drop contents.
 
 Unit tests cover schema migration, precise RGB/list serialization, defensive
