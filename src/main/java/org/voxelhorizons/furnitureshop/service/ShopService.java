@@ -28,6 +28,7 @@ public final class ShopService {
     private final SnapshotRepository snapshots;
     private final LayoutService layouts;
     private final ShowroomDefinition showroom;
+    private final RotationBlackout rotationBlackout;
     private final Set<UUID> editors = new LinkedHashSet<UUID>();
     private final Random random = new Random();
     private final Map<String, LayoutSnapshot> activeSnapshotCache = new LinkedHashMap<String, LayoutSnapshot>();
@@ -38,6 +39,7 @@ public final class ShopService {
 
     public ShopService(JavaPlugin plugin, ShopRepository store, SnapshotRepository snapshots, LayoutService layouts) {
         this.plugin = plugin; this.store = store; this.snapshots = snapshots; this.layouts = layouts;
+        this.rotationBlackout = new RotationBlackout(plugin);
         this.snapshots.migrateLegacyFixtures();
         this.showroom = store.load();
         // A server restart destroys online editor sessions, not the physical
@@ -295,33 +297,69 @@ public final class ShopService {
         if (day > showroom.lastDay()) { rotate(); showroom.lastDay(day); save(); }
     }
 
-    /** Closes, redraws, and reopens the one physical showroom as a single transaction. */
+    /** Closes, obscures, redraws, and reopens the physical showroom. */
     public void rotate() {
         if (editing() || closedForEditing)
             throw new IllegalStateException("Rotation is paused while showroom editing or its protected closure is active.");
         if (rotating) throw new IllegalStateException("Showroom rotation is already running.");
-        // Check the entire variant pairing BEFORE doors close or visitors are
-        // evacuated. A missing non-exclusive fallback must not strand a shop
-        // in its CLOSED state after a delayed restock fails.
         final Map<String, String> plan = chooseRestockPlan();
         rotating = true;
-        try { close(); }
-        catch (RuntimeException exception) { rotating = false; throw exception; }
-        long restockDelay = plugin.getConfig().getLong("rotation.restock-delay-ticks", 80L);
-        plugin.getServer().getScheduler().runTaskLater(plugin, new Runnable() {
-            @Override public void run() {
-                try {
-                    restockAllRegions(plan);
-                    long reopenDelay = plugin.getConfig().getLong("rotation.reopen-delay-ticks", 20L);
-                    plugin.getServer().getScheduler().runTaskLater(plugin, new Runnable() {
-                        @Override public void run() { try { open(); } finally { rotating = false; } }
-                    }, Math.max(0L, reopenDelay));
-                } catch (RuntimeException exception) {
-                    rotating = false;
-                    plugin.getLogger().log(Level.SEVERE, "Failed to restock the showroom", exception);
+        try {
+            // Prepare/mask only registered variant areas. Beginning BEFORE
+            // closure ensures oversized region protection fails before any
+            // door or layout changes could leave the shop stranded.
+            rotationBlackout.begin(showroom.regions().values(),
+                    showroom.doors().values(), showroom.furnitureGroups().values());
+            close();
+        } catch (RuntimeException exception) {
+            rotationBlackout.end();
+            rotating = false;
+            throw exception;
+        }
+        final long restockDelay = Math.max(0L,
+                plugin.getConfig().getLong("rotation.restock-delay-ticks", 80L));
+        try {
+            plugin.getServer().getScheduler().runTaskLater(plugin, new Runnable() {
+                @Override public void run() {
+                    try {
+                        restockAllRegions(plan);
+                        // Real block updates during a restock may replace fake
+                        // client blocks; immediately renew the same scoped mask.
+                        rotationBlackout.refresh();
+                        long reopenDelay = Math.max(0L,
+                                plugin.getConfig().getLong("rotation.reopen-delay-ticks", 20L));
+                        plugin.getServer().getScheduler().runTaskLater(plugin, new Runnable() {
+                            @Override public void run() {
+                                try { open(); }
+                                catch (RuntimeException error) {
+                                    plugin.getLogger().log(Level.SEVERE,
+                                            "Failed to reopen showroom after restock", error);
+                                } finally {
+                                    // No viewer keeps fake blocks after success
+                                    // or failure, even if the doors remain shut.
+                                    rotationBlackout.end();
+                                    rotating = false;
+                                }
+                            }
+                        }, reopenDelay);
+                    } catch (RuntimeException exception) {
+                        rotationBlackout.end();
+                        rotating = false;
+                        plugin.getLogger().log(Level.SEVERE, "Failed to restock the showroom", exception);
+                    }
                 }
-            }
-        }, Math.max(0L, restockDelay));
+            }, restockDelay);
+        } catch (RuntimeException exception) {
+            rotationBlackout.end();
+            rotating = false;
+            throw exception;
+        }
+    }
+
+    /** Called on plugin shutdown to remove any outstanding client-only mask. */
+    public void stopRotationBlackout() {
+        rotationBlackout.end();
+        rotating = false;
     }
 
     /** Manual and rotation closure: evacuates ALL players, even existing editors. */
