@@ -7,8 +7,10 @@ import org.voxelhorizons.furnitureshop.model.RecordedBlock;
 import org.voxelhorizons.furnitureshop.model.RecordedFurniture;
 
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -125,9 +127,26 @@ public final class SnapshotRepository {
                 yaml.set(base + ".inventory", furniture.inventoryContents());
             if (furniture.useAnimationActive()) yaml.set(base + ".use_animation_active", true);
         }
+        Path temporary = null;
         try {
-            Files.createDirectories(file.getParent()); yaml.save(file.toFile());
-        } catch (IOException exception) { throw new IllegalStateException("Unable to save snapshot " + file, exception); }
+            Files.createDirectories(file.getParent());
+            // A crash during a metadata write must not leave a partially
+            // serialized variant that later rotates into an empty showroom.
+            temporary = Files.createTempFile(file.getParent(), "snapshot-", ".tmp");
+            yaml.save(temporary.toFile());
+            try {
+                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException unsupported) {
+                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to save snapshot " + file, exception);
+        } finally {
+            if (temporary != null) {
+                try { Files.deleteIfExists(temporary); } catch (IOException ignored) { }
+            }
+        }
     }
 
     /** Convert Bukkit nested sections to ordinary maps without losing serialized ItemStacks. */
@@ -145,6 +164,10 @@ public final class SnapshotRepository {
     private static LayoutSnapshot load(Path file) {
         if (!Files.exists(file)) throw new IllegalArgumentException("Snapshot does not exist: " + file);
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file.toFile());
+        int schema = yaml.getInt("schema", -1);
+        if (schema < 1 || schema > 4)
+            throw new IllegalStateException("Invalid snapshot schema " + schema + " in " + file
+                    + "; refusing to apply an empty or unsupported layout");
         List<RecordedBlock> blocks = new ArrayList<RecordedBlock>();
         ConfigurationSection blockSection = yaml.getConfigurationSection("blocks");
         if (blockSection != null) for (String key : blockSection.getKeys(false)) {
