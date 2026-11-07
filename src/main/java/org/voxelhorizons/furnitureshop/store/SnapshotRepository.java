@@ -107,7 +107,7 @@ public final class SnapshotRepository {
 
     private static void save(Path file, LayoutSnapshot snapshot) {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema", 3);
+        yaml.set("schema", 4);
         for (int i = 0; i < snapshot.blocks().size(); i++) {
             RecordedBlock block = snapshot.blocks().get(i); String base = "blocks." + i;
             yaml.set(base + ".x", block.x()); yaml.set(base + ".y", block.y()); yaml.set(base + ".z", block.z());
@@ -120,6 +120,10 @@ public final class SnapshotRepository {
             RecordedFurniture furniture = snapshot.furniture().get(i); String base = "furniture." + i;
             yaml.set(base + ".definition", furniture.definition()); yaml.set(base + ".x", furniture.x());
             yaml.set(base + ".y", furniture.y()); yaml.set(base + ".z", furniture.z()); yaml.set(base + ".yaw", furniture.yaw());
+            if (furniture.dyeColor() != null) yaml.set(base + ".dye_color", furniture.dyeColor());
+            if (!furniture.inventoryContents().isEmpty())
+                yaml.set(base + ".inventory", furniture.inventoryContents());
+            if (furniture.useAnimationActive()) yaml.set(base + ".use_animation_active", true);
         }
         try {
             Files.createDirectories(file.getParent()); yaml.save(file.toFile());
@@ -155,8 +159,20 @@ public final class SnapshotRepository {
         ConfigurationSection furnitureSection = yaml.getConfigurationSection("furniture");
         if (furnitureSection != null) for (String key : furnitureSection.getKeys(false)) {
             String base = "furniture." + key;
+            Object savedColor = yaml.get(base + ".dye_color");
+            if (savedColor != null && !(savedColor instanceof Number))
+                throw new IllegalArgumentException("Invalid furniture dye colour at " + base);
+            List<org.bukkit.inventory.ItemStack> contents = new ArrayList<org.bukkit.inventory.ItemStack>();
+            List<?> stored = yaml.getList(base + ".inventory");
+            if (stored != null) for (Object item : stored) {
+                if (item != null && !(item instanceof org.bukkit.inventory.ItemStack))
+                    throw new IllegalArgumentException("Invalid saved furniture ItemStack at " + base);
+                contents.add(item == null ? null : ((org.bukkit.inventory.ItemStack)item).clone());
+            }
             furniture.add(new RecordedFurniture(yaml.getString(base + ".definition"), yaml.getDouble(base + ".x"),
-                    yaml.getDouble(base + ".y"), yaml.getDouble(base + ".z"), (float) yaml.getDouble(base + ".yaw")));
+                    yaml.getDouble(base + ".y"), yaml.getDouble(base + ".z"), (float) yaml.getDouble(base + ".yaw"),
+                    savedColor == null ? null : Integer.valueOf(((Number)savedColor).intValue()), contents,
+                    yaml.getBoolean(base + ".use_animation_active", false)));
         }
         return new LayoutSnapshot(blocks, furniture);
     }
