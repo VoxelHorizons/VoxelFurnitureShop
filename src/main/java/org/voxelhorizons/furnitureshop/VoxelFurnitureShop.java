@@ -98,11 +98,6 @@ public final class VoxelFurnitureShop extends JavaPlugin {
     static void validateRuntimeConfig(FileConfiguration config) {
         ShopPurchaseUi.fromConfig(config); // Reject invalid GUI hitboxes before a config reload.
         ShopPurchaseText.validate(config); // Validate all authored message and item text mappings.
-        if (config.getLong("rotation.blackout.refresh-ticks", 10L) < 1L
-                || config.getInt("rotation.blackout.max-blocks", 32768) < 1
-                || config.getInt("rotation.blackout.view-distance-blocks", 128) < 1) {
-            throw new IllegalArgumentException("Rotation blackout refresh, max-blocks, and view-distance must be positive.");
-        }
         if (config.getLong("rotation.check-interval-ticks", 100L) < 1L
                 || config.getLong("tooltip.check-interval-ticks", 5L) < 1L) {
             throw new IllegalArgumentException("Rotation and tooltip check intervals must be positive.");
@@ -150,9 +145,6 @@ public final class VoxelFurnitureShop extends JavaPlugin {
         if (rotationTask != null) rotationTask.cancel();
         if (tooltips != null) tooltips.shutdown();
         if (modes != null) modes.shutdown();
-        if (shops != null) {
-            shops.stopRotationBlackout(); // Send each viewer the real blocks before plugin tasks stop.
-            shops.save();
-        }
+        if (shops != null) shops.save();
     }
 }

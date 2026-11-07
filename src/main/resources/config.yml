@@ -9,22 +9,6 @@ rotation:
   # Avoid repeating the full last layout when another compatible combination exists.
   # Independent regions may keep their current variants to allow every valid mix.
   avoid-current-variant: true
-
-  # Temporarily conceal ONLY the configured variant cuboids while they restock.
-  # Bukkit has no writable per-block light level. Instead, viewers receive
-  # temporary client-side opaque near-black blocks; the REAL blocks, their
-  # metadata and server lighting are never changed.
-  # Shared doors/furniture-group areas are excluded even if they overlap.
-  # Real blocks are restored on reopen, failure and plugin shutdown.
-  blackout:
-    enabled: true
-    # Restock sends real block updates; resend the mask while rotating.
-    refresh-ticks: 10
-    # Avoid sending fake blocks to players too far away to see the shop.
-    view-distance-blocks: 128
-    # Above this many variant block positions, mask the cuboid surfaces only.
-    # If even those exceed the limit, abort safely BEFORE doors close.
-    max-blocks: 32768
 economy:
   # Default currency for legacy numeric worth: 250.
   default-currency: coins

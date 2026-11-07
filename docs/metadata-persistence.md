@@ -74,54 +74,6 @@ the new restoration API is missing, Shop refuses to clear the current
 layout**. This fail-closed policy prevents deleting valuable items when the
 dependency has not yet been updated.
 
-## Variant-only visual blackout during rotations
-
-The shop temporarily hides the content-changing process from clients with a
-**scoped, client-side near-black mask**. This addresses the visibility problem
-without touching lighting-engine internals, real blocks, tile inventories,
-Bukkit PDC, display entities, furniture ownership, or the saved snapshots.
-
-**Why not forcibly set every light level to 0?** Bukkit/Paper exposes
-`Block.getLightLevel()`, `getLightFromSky()` and `getLightFromBlocks()` as
-read-only lighting properties. There is no stable public per-block setter.
-Even a true block-light override would not necessarily suppress skylight,
-night vision or directly visible furniture. Editing actual light sources
-would be especially unsafe with the full-metadata persistence feature.
-
-Instead `RotationBlackout` uses native Bukkit `Player.sendBlockChange`
-to show an opaque dark block **only at positions inside registered variant
-cuboids**. It never alters the world. Positions belonging to shared door
-or furniture-group cuboids are excluded even if they overlap a variant.
-During restock, it resends the mask after real world updates and periodically
-while rotation is active so players joining or approaching later also see
-the blackout. On successful reopening, restock failure, scheduling failure
-or plugin disable, the mask is removed using the latest real block states.
-On modern Paper, the restore also sends public `TileState` updates for
-signs, containers and other tile entities, so clients do not retain a
-blank tile after the temporary fake blocks disappear.
-
-```yaml
-rotation:
-  blackout:
-    enabled: true
-    refresh-ticks: 10
-    view-distance-blocks: 128
-    max-blocks: 32768
-```
-
-Normally every block position in every configured variant region is masked.
-If the combined variant volume exceeds `max-blocks`, the planner masks
-the **inside surfaces** of those same cuboids instead. If even that would
-exceed the bound, rotation aborts before closing doors rather than partially
-masking a showroom and claiming it was hidden.
-
-This is **visual concealment, not an actual light-level-0 change**. It
-requires no ProtocolLib, PacketEvents, NMS or dependencies. Verify appearance
-on both Java and Geyser Bedrock clients: fake block updates must be supported
-by the particular client/protocol translation in use. Check especially for
-brief glimpses during real-world updates and for tile entity appearances
-after the mask is removed.
-
 ## Deployment/testing
 
 1. Back up `plugins/VoxelFurnitureShop/snapshots` and the showroom world.
