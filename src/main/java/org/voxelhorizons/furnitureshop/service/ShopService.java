@@ -151,6 +151,10 @@ public final class ShopService {
     public LayoutService.ApplyResult applyVariant(String regionId, String variant) {
         LinkedHashMap<String, String> plan = new LinkedHashMap<String, String>();
         resolveRequirements(regionId, variant, plan, new LinkedHashSet<String>());
+        // Commit mutable state of the outgoing variants BEFORE any region
+        // is cleared. Capturing after the first apply can miss cross-region
+        // furniture or overwrite metadata with an empty placeholder.
+        persistActiveVariantState();
         int blocks = 0, furniture = 0;
         for (Map.Entry<String, String> selected : plan.entrySet()) {
             LayoutService.ApplyResult result = layouts.apply(requiredRegion(selected.getKey()),
@@ -163,6 +167,8 @@ public final class ShopService {
     }
 
     public void clearVariant(String regionId) {
+        // Clearing a visible variant should not discard recolours or contents.
+        persistActiveVariantState();
         activeSnapshotCache.clear();
         ShopCuboid region = requiredRegion(regionId);
         layouts.clear(region, showroom.furnitureGroups().values());
@@ -368,6 +374,9 @@ public final class ShopService {
     }
 
     private void restockAllRegions(Map<String, String> plan) {
+        // All active regions must be captured before the first replacement,
+        // even when a region happens to select its current variant again.
+        persistActiveVariantState();
         for (Map.Entry<String, String> selected : plan.entrySet()) {
             layouts.apply(requiredRegion(selected.getKey()), snapshots.loadVariant(selected.getKey(), selected.getValue()),
                     showroom.furnitureGroups().values());
@@ -376,6 +385,34 @@ public final class ShopService {
         activeSnapshotCache.clear();
         save();
     }
+    /**
+     * A saved layout is the authored template, but its tile/furniture metadata
+     * can change at runtime (dyes, stored items, PDC, signs, animations).
+     * Capture each active region before a rotation replaces anything.
+     *
+     * Stage all captures and merges before writing any variant. Missing or
+     * modified structures keep their authored position/type and previous
+     * metadata; editors still use "variant update" to change layout geometry.
+     */
+    private void persistActiveVariantState() {
+        Map<String, LayoutSnapshot> pending = new LinkedHashMap<String, LayoutSnapshot>();
+        for (Map.Entry<String, String> entry : showroom.activeVariants().entrySet()) {
+            String regionId = entry.getKey(), variant = entry.getValue();
+            if (variant == null || !snapshots.hasVariant(regionId, variant)) continue;
+            ShopCuboid region = requiredRegion(regionId);
+            String key = regionId + "/" + variant;
+            LayoutSnapshot saved = snapshots.loadVariant(regionId, variant);
+            LayoutSnapshot live = layouts.capture(region, showroom.furnitureGroups().values());
+            pending.put(key, VariantStatePreserver.merge(saved, live));
+        }
+        for (Map.Entry<String, LayoutSnapshot> update : pending.entrySet()) {
+            int slash = update.getKey().indexOf('/');
+            snapshots.saveVariant(update.getKey().substring(0, slash),
+                    update.getKey().substring(slash + 1), update.getValue());
+        }
+        if (!pending.isEmpty()) activeSnapshotCache.clear();
+    }
+
     private void resolveRequirements(String region, String variant, LinkedHashMap<String, String> plan, Set<String> visiting) {
         requiredRegion(region); requireId(variant);
         if (!snapshots.hasVariant(region, variant)) throw new IllegalArgumentException("Unknown variant: " + region + "/" + variant);
