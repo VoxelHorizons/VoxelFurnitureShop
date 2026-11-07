@@ -141,6 +141,8 @@ final class RotationBlackout {
                 }
             } catch (ReflectiveOperationException error) {
                 plugin.getLogger().log(Level.WARNING, "Cannot send rotation blackout to " + player.getName(), error);
+            } catch (RuntimeException error) {
+                plugin.getLogger().log(Level.WARNING, "Cannot send rotation blackout to " + player.getName(), error);
             }
         }
     }
@@ -157,15 +159,20 @@ final class RotationBlackout {
             Player player = plugin.getServer().getPlayer(id);
             if (player == null || !player.isOnline()) continue;
             World playerWorld = player.getWorld();
+            boolean warned = false;
             for (Cell cell : cells) {
                 if (!cell.world.equals(playerWorld.getName())) continue;
                 World world = worlds.get(cell.world);
                 if (world == null || !world.isChunkLoaded(cell.x >> 4, cell.z >> 4)) continue;
                 try { send(player, cell, world, null, false); }
                 catch (ReflectiveOperationException error) {
-                    plugin.getLogger().log(Level.WARNING,
-                            "Could not restore a client-side blackout block for " + player.getName(), error);
-                    break;
+                    if (!warned) plugin.getLogger().log(Level.WARNING,
+                            "Could not restore some client-side blackout blocks for " + player.getName(), error);
+                    warned = true;
+                } catch (RuntimeException error) {
+                    if (!warned) plugin.getLogger().log(Level.WARNING,
+                            "Could not restore some client-side blackout blocks for " + player.getName(), error);
+                    warned = true;
                 }
             }
         }
