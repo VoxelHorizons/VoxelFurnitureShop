@@ -334,9 +334,9 @@ public final class ShopService {
         // The door state can contain inventories, signs, skull metadata and
         // plugin PDC too. Save the outgoing open-state metadata before the
         // door snapshot is replaced, not after it has disappeared.
-        if (showroomOpen) persistDoorState("open");
         Location exit = showroom.exit();
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
+        if (showroomOpen) persistDoorState("open");
         if (!editingClosure) editors.clear();
         showroomOpen = false;
         closedForEditing = editingClosure;
