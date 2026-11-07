@@ -331,6 +331,10 @@ public final class ShopService {
     private void closeForEditing() { closeInternal(true); }
 
     private void closeInternal(boolean editingClosure) {
+        // The door state can contain inventories, signs, skull metadata and
+        // plugin PDC too. Save the outgoing open-state metadata before the
+        // door snapshot is replaced, not after it has disappeared.
+        if (showroomOpen) persistDoorState("open");
         Location exit = showroom.exit();
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
         if (!editingClosure) editors.clear();
@@ -349,6 +353,7 @@ public final class ShopService {
         applyDoors("closed");
     }
     public void open() {
+        if (!showroomOpen) persistDoorState("closed");
         // Reopen the actual doors/animations before clearing a protected pause.
         // If restoration fails, leave the closure recoverable with a retry of
         // /vfs edit off (or /vfs open) instead of silently losing its state.
@@ -431,6 +436,18 @@ public final class ShopService {
         if (!showroom.furnitureGroups().isEmpty() && affected == 0) {
             plugin.getLogger().warning("No animated furniture found inside the configured showroom furniture groups.");
         }
+    }
+
+    private void persistDoorState(String state) {
+        Map<String, LayoutSnapshot> pending = new LinkedHashMap<String, LayoutSnapshot>();
+        for (Map.Entry<String, ShopCuboid> entry : showroom.doors().entrySet()) {
+            if (!snapshots.hasDoor(entry.getKey(), state)) continue;
+            LayoutSnapshot original = snapshots.loadDoor(entry.getKey(), state);
+            LayoutSnapshot live = layouts.capture(entry.getValue());
+            pending.put(entry.getKey(), VariantStatePreserver.merge(original, live));
+        }
+        for (Map.Entry<String, LayoutSnapshot> entry : pending.entrySet())
+            snapshots.saveDoor(entry.getKey(), state, entry.getValue());
     }
 
     private void applyDoors(String state) {
