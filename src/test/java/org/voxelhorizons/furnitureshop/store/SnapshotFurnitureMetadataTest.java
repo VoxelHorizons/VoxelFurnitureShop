@@ -1,8 +1,13 @@
 package org.voxelhorizons.furnitureshop.store;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.Server;
+import org.bukkit.inventory.ItemFactory;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.inventory.ItemStack;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -10,6 +15,8 @@ import org.voxelhorizons.furnitureshop.model.LayoutSnapshot;
 import org.voxelhorizons.furnitureshop.model.RecordedBlock;
 import org.voxelhorizons.furnitureshop.model.RecordedFurniture;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.Collections;
 
@@ -17,6 +24,39 @@ import static org.junit.Assert.*;
 
 public final class SnapshotFurnitureMetadataTest {
     @Rule public TemporaryFolder folder = new TemporaryFolder();
+
+    private static Field serverField;
+    private static Object previousServer;
+
+    /**
+     * Spigot 1.12 ItemStack serialization consults Bukkit.getItemFactory()
+     * even when the stack has no custom meta. Supply a minimal API stub for
+     * offline YAML round-trip tests, and restore the global afterwards.
+     * Production always uses Paper's real ItemFactory, retaining components.
+     */
+    @BeforeClass public static void installBukkitItemFactory() throws Exception {
+        serverField = Bukkit.class.getDeclaredField("server");
+        serverField.setAccessible(true);
+        previousServer = serverField.get(null);
+        final ItemFactory factory = (ItemFactory) Proxy.newProxyInstance(
+                ItemFactory.class.getClassLoader(), new Class<?>[]{ItemFactory.class},
+                (proxy, method, args) -> null);
+        Server server = (Server) Proxy.newProxyInstance(
+                Server.class.getClassLoader(), new Class<?>[]{Server.class},
+                (proxy, method, args) -> {
+                    if ("getItemFactory".equals(method.getName())) return factory;
+                    if ("getLogger".equals(method.getName()))
+                        return java.util.logging.Logger.getLogger("VoxelFurnitureShopTest");
+                    if ("getName".equals(method.getName())) return "VoxelFurnitureShopTest";
+                    if ("getVersion".equals(method.getName())) return "1.12.2-test";
+                    return null;
+                });
+        serverField.set(null, server);
+    }
+
+    @AfterClass public static void restoreBukkitServer() throws Exception {
+        if (serverField != null) serverField.set(null, previousServer);
+    }
 
     private static ItemStack customItem() {
         // Bukkit's item-meta factory requires a running server; CI uses the
