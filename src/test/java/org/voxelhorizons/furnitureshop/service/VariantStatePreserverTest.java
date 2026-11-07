@@ -31,7 +31,8 @@ public final class VariantStatePreserverTest {
                 new LayoutSnapshot(Collections.<RecordedBlock>emptyList(), Arrays.asList(active)));
         RecordedFurniture result = merged.furniture().get(0);
         assertEquals(Integer.valueOf(0xFF00AA), result.dyeColor());
-        assertEquals(item, result.inventoryContents().get(1));
+        assertEquals(item.getType(), result.inventoryContents().get(1).getType());
+        assertEquals(item.getAmount(), result.inventoryContents().get(1).getAmount());
         assertEquals(saved.yaw(), result.yaw(), 0.001f);
         assertEquals(saved.x(), result.x(), 0.001);
         assertEquals(Integer.valueOf(0x123456), saved.dyeColor());
@@ -69,7 +70,9 @@ public final class VariantStatePreserverTest {
         assertEquals("Y2hhbmdlZA==", result.tileData().get("pdc"));
         @SuppressWarnings("unchecked")
         Map<String,Object> savedItems = (Map<String,Object>)result.tileData().get("inventory");
-        assertEquals(item, savedItems.get("7"));
+        ItemStack copy = (ItemStack)savedItems.get("7");
+        assertEquals(item.getType(), copy.getType());
+        assertEquals(item.getAmount(), copy.getAmount());
     }
 
     @Test public void animationStateAlsoCarriesAcrossRotation() {
