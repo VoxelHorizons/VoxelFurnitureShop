@@ -40,7 +40,14 @@ public final class SnapshotFurnitureMetadataTest {
         previousServer = serverField.get(null);
         final ItemFactory factory = (ItemFactory) Proxy.newProxyInstance(
                 ItemFactory.class.getClassLoader(), new Class<?>[]{ItemFactory.class},
-                (proxy, method, args) -> null);
+                (proxy, method, args) -> {
+                    // ItemStack.serialize() calls ItemFactory.equals(a, b).
+                    // No custom meta exists in this offline round-trip test.
+                    if ("equals".equals(method.getName())) return Boolean.TRUE;
+                    if (method.getReturnType() == boolean.class) return Boolean.FALSE;
+                    if (method.getReturnType() == int.class) return Integer.valueOf(0);
+                    return null;
+                });
         Server server = (Server) Proxy.newProxyInstance(
                 Server.class.getClassLoader(), new Class<?>[]{Server.class},
                 (proxy, method, args) -> {
