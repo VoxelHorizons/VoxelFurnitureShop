@@ -69,13 +69,30 @@ public final class ShopPurchaseService implements Listener {
         opening.add(playerId);
         plugin.getServer().getScheduler().runTask(plugin, () -> opening.remove(playerId));
         try {
-            showPrimary(player, instance.id(), VoxelCore.getInstance().getItemManager()
-                    .createItem(instance.definitionId()), prices);
+            showPrimary(player, instance.id(), purchaseItem(instance), prices);
         } catch (RuntimeException error) {
             plugin.getLogger().log(Level.WARNING, "Could not open furniture purchase menu", error);
             send(player, "purchase-unavailable", context(instance));
         }
         return true;
+    }
+
+    /**
+     * Purchase previews and delivered furniture MUST preserve the exact
+     * per-instance RGB tint. Creating an uncoloured definition item silently
+     * lost colour custom model data when a player purchased a dyed display.
+     * This is intentionally separate from fixture inventory contents: stored
+     * items inside the shop display are not free purchase rewards.
+     */
+    private static ItemStack purchaseItem(FurnitureInstance instance) {
+        org.voxelhorizons.item.ItemManager manager = VoxelCore.getInstance().getItemManager();
+        ItemStack item = manager.createItem(instance.definitionId());
+        Integer rgb = instance.dyeColor();
+        if (rgb == null) return item;
+        if (!manager.isDyeable(item))
+            throw new IllegalStateException("Display " + instance.definitionId()
+                    + " has saved RGB but its purchasable item is not dyeable");
+        return manager.setDyeColor(item, rgb.intValue());
     }
 
     private FurniturePricing pricing(ContentID id) {
@@ -219,7 +236,7 @@ public final class ShopPurchaseService implements Listener {
             Inventory inv = Bukkit.createInventory(menu, ShopPurchaseUi.INVENTORY_SIZE,
                     title(ui.currencyTitle(), base));
             menu.inventory = inv;
-            ItemStack item = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId());
+            ItemStack item = purchaseItem(instance);
             inv.setItem(ui.currencyPreviewSlot(), preview(item,
                     "purchase-ui.text.currency-selection.preview", base));
             for (String currency : available) {
@@ -360,7 +377,7 @@ public final class ShopPurchaseService implements Listener {
         final ItemStack item;
         try {
             prices = pricing(instance.definitionId());
-            item = VoxelCore.getInstance().getItemManager().createItem(instance.definitionId());
+            item = purchaseItem(instance);
         } catch (RuntimeException invalid) {
             player.closeInventory();
             send(player, "furniture-unavailable", context(instance));

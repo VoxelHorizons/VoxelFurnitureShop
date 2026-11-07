@@ -151,6 +151,10 @@ public final class ShopService {
     public LayoutService.ApplyResult applyVariant(String regionId, String variant) {
         LinkedHashMap<String, String> plan = new LinkedHashMap<String, String>();
         resolveRequirements(regionId, variant, plan, new LinkedHashSet<String>());
+        // Commit mutable state of the outgoing variants BEFORE any region
+        // is cleared. Capturing after the first apply can miss cross-region
+        // furniture or overwrite metadata with an empty placeholder.
+        persistActiveVariantState();
         int blocks = 0, furniture = 0;
         for (Map.Entry<String, String> selected : plan.entrySet()) {
             LayoutService.ApplyResult result = layouts.apply(requiredRegion(selected.getKey()),
@@ -163,6 +167,8 @@ public final class ShopService {
     }
 
     public void clearVariant(String regionId) {
+        // Clearing a visible variant should not discard recolours or contents.
+        persistActiveVariantState();
         activeSnapshotCache.clear();
         ShopCuboid region = requiredRegion(regionId);
         layouts.clear(region, showroom.furnitureGroups().values());
@@ -325,8 +331,12 @@ public final class ShopService {
     private void closeForEditing() { closeInternal(true); }
 
     private void closeInternal(boolean editingClosure) {
+        // The door state can contain inventories, signs, skull metadata and
+        // plugin PDC too. Save the outgoing open-state metadata before the
+        // door snapshot is replaced, not after it has disappeared.
         Location exit = showroom.exit();
         if (exit == null) throw new IllegalStateException("Set the shared evacuation exit with /vfs exit first.");
+        if (showroomOpen) persistDoorState("open");
         if (!editingClosure) editors.clear();
         showroomOpen = false;
         closedForEditing = editingClosure;
@@ -343,6 +353,7 @@ public final class ShopService {
         applyDoors("closed");
     }
     public void open() {
+        if (!showroomOpen) persistDoorState("closed");
         // Reopen the actual doors/animations before clearing a protected pause.
         // If restoration fails, leave the closure recoverable with a retry of
         // /vfs edit off (or /vfs open) instead of silently losing its state.
@@ -368,6 +379,9 @@ public final class ShopService {
     }
 
     private void restockAllRegions(Map<String, String> plan) {
+        // All active regions must be captured before the first replacement,
+        // even when a region happens to select its current variant again.
+        persistActiveVariantState();
         for (Map.Entry<String, String> selected : plan.entrySet()) {
             layouts.apply(requiredRegion(selected.getKey()), snapshots.loadVariant(selected.getKey(), selected.getValue()),
                     showroom.furnitureGroups().values());
@@ -376,6 +390,34 @@ public final class ShopService {
         activeSnapshotCache.clear();
         save();
     }
+    /**
+     * A saved layout is the authored template, but its tile/furniture metadata
+     * can change at runtime (dyes, stored items, PDC, signs, animations).
+     * Capture each active region before a rotation replaces anything.
+     *
+     * Stage all captures and merges before writing any variant. Missing or
+     * modified structures keep their authored position/type and previous
+     * metadata; editors still use "variant update" to change layout geometry.
+     */
+    private void persistActiveVariantState() {
+        Map<String, LayoutSnapshot> pending = new LinkedHashMap<String, LayoutSnapshot>();
+        for (Map.Entry<String, String> entry : showroom.activeVariants().entrySet()) {
+            String regionId = entry.getKey(), variant = entry.getValue();
+            if (variant == null || !snapshots.hasVariant(regionId, variant)) continue;
+            ShopCuboid region = requiredRegion(regionId);
+            String key = regionId + "/" + variant;
+            LayoutSnapshot saved = snapshots.loadVariant(regionId, variant);
+            LayoutSnapshot live = layouts.capture(region, showroom.furnitureGroups().values());
+            pending.put(key, VariantStatePreserver.merge(saved, live));
+        }
+        for (Map.Entry<String, LayoutSnapshot> update : pending.entrySet()) {
+            int slash = update.getKey().indexOf('/');
+            snapshots.saveVariant(update.getKey().substring(0, slash),
+                    update.getKey().substring(slash + 1), update.getValue());
+        }
+        if (!pending.isEmpty()) activeSnapshotCache.clear();
+    }
+
     private void resolveRequirements(String region, String variant, LinkedHashMap<String, String> plan, Set<String> visiting) {
         requiredRegion(region); requireId(variant);
         if (!snapshots.hasVariant(region, variant)) throw new IllegalArgumentException("Unknown variant: " + region + "/" + variant);
@@ -394,6 +436,18 @@ public final class ShopService {
         if (!showroom.furnitureGroups().isEmpty() && affected == 0) {
             plugin.getLogger().warning("No animated furniture found inside the configured showroom furniture groups.");
         }
+    }
+
+    private void persistDoorState(String state) {
+        Map<String, LayoutSnapshot> pending = new LinkedHashMap<String, LayoutSnapshot>();
+        for (Map.Entry<String, ShopCuboid> entry : showroom.doors().entrySet()) {
+            if (!snapshots.hasDoor(entry.getKey(), state)) continue;
+            LayoutSnapshot original = snapshots.loadDoor(entry.getKey(), state);
+            LayoutSnapshot live = layouts.capture(entry.getValue());
+            pending.put(entry.getKey(), VariantStatePreserver.merge(original, live));
+        }
+        for (Map.Entry<String, LayoutSnapshot> entry : pending.entrySet())
+            snapshots.saveDoor(entry.getKey(), state, entry.getValue());
     }
 
     private void applyDoors(String state) {

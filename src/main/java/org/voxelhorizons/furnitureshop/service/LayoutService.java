@@ -73,9 +73,13 @@ public final class LayoutService {
         for (FurnitureInstance instance : furniture.instances()) {
             Location location = instance.location();
             if (!cuboid.contains(location) || insideAny(location, persistentFurniture)) continue;
-            recorded.add(new RecordedFurniture(instance.definitionId().toString(),
+            // Fetch the latest inventory state, including unsaved edits from
+            // currently open furniture inventories, before any rotation clears it.
+            FurnitureInstance state = FurnitureSnapshotBridge.capture(furniture, instance);
+            recorded.add(new RecordedFurniture(state.definitionId().toString(),
                     location.getX() - cuboid.minX(), location.getY() - cuboid.minY(),
-                    location.getZ() - cuboid.minZ(), instance.yaw()));
+                    location.getZ() - cuboid.minZ(), state.yaw(), state.dyeColor(),
+                    state.inventoryContents(), state.useAnimationActive()));
         }
         return new LayoutSnapshot(blocks, recorded);
     }
@@ -111,6 +115,15 @@ public final class LayoutService {
         World world = cuboid.world();
         if (world == null) throw new IllegalStateException("World is not loaded: " + cuboid.worldName());
         validate(cuboid, snapshot);
+        // Avoid destroying an existing display if the installed VoxelFurniture
+        // cannot restore its saved inventory ItemStacks. The API check MUST
+        // run before clear() removes any blocks or furniture.
+        FurnitureSnapshotBridge.validateRestore(furniture, snapshot.furniture());
+        for (RecordedFurniture value : snapshot.furniture()) {
+            ContentID id = ContentID.parse(value.definition(), "voxel");
+            if (!furniture.definition(id).isPresent())
+                throw new IllegalStateException("Unknown furniture definition: " + id);
+        }
         clear(cuboid, persistentFurniture);
         int restoredBlocks = 0;
         for (RecordedBlock value : snapshot.blocks()) {
@@ -127,8 +140,9 @@ public final class LayoutService {
             if (!definition.isPresent()) throw new IllegalStateException("Unknown furniture definition: " + id);
             Location location = new Location(world, cuboid.minX() + value.x(), cuboid.minY() + value.y(),
                     cuboid.minZ() + value.z(), value.yaw(), 0.0F);
-            if (!furniture.place(definition.get(), location, value.yaw()).isPresent())
-                throw new IllegalStateException("Could not restore " + id + " at " + location);
+            if (!FurnitureSnapshotBridge.place(furniture, definition.get(), location, value).isPresent())
+                throw new IllegalStateException("Could not restore furniture and metadata for "
+                        + id + " at " + location);
             restoredFurniture++;
         }
         return new ApplyResult(restoredBlocks, restoredFurniture);

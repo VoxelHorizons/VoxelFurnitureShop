@@ -37,17 +37,21 @@ tooltip:
   sale-line: "&f:shop_mouse: &7Click to Buy"
   not-for-sale-line: "&f:shop_mouse: &7Not for sale"
 
-# Both purchasing GUIs use a single inventory row (9 slots) on Java and
-# Bedrock. Your VoxelCore font glyph draws the artwork; slots 0–8 are the
-# only clickable top-inventory hitboxes.
-# Original confirmation GUI; used for all priced furniture.
-# With multiple available currencies, green opens the optional choice GUI below.
+# Both purchase screens now use a native 3-row (27-slot) chest inventory
+# on Java and Geyser/Bedrock. The artwork is provided by your VoxelCore glyph;
+# update your existing furniture_shop and furniture_shop_currency textures
+# to match the new height. All clickable hitboxes are on the middle row.
+# Slot numbers are zero-based: first row 0–8, middle 9–17, bottom 18–26.
+# Old configs without slot-layout-version automatically shift old 0–8
+# button positions down one row (+9). Version 2 uses exact 0–26 values.
+# Original confirmation GUI, with optional currency selection.
 purchase-ui:
+  slot-layout-version: 2
   title: ":offset_-8::furniture_shop::offset_8:&rPurchase Furniture"
   button-item: "voxel:ui/blank"
-  preview-slot: 4
-  cancel-slots: [1, 2]
-  purchase-slots: [6, 7]
+  preview-slot: 13
+  cancel-slots: [10, 11]
+  purchase-slots: [15, 16]
 
   # Human-readable labels. <currency> uses these; <currency_id> is the raw ID.
   currency-labels:
@@ -101,10 +105,10 @@ purchase-ui:
   currency-selection:
     title: ":offset_-8::furniture_shop_currency::offset_8:&rSelect Currency"
     button-item: "voxel:ui/blank"
-    preview-slot: 4
+    preview-slot: 13
     currencies:
-      coins: [1, 2]
-      tokens: [6, 7]
+      coins: [10, 11]
+      tokens: [15, 16]
 
 # Per-currency insufficient-balance messages. Other currency IDs use default.
 # <price>/<amount>, <currency> and <furniture> can be used in every message.

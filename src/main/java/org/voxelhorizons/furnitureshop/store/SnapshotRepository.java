@@ -7,8 +7,10 @@ import org.voxelhorizons.furnitureshop.model.RecordedBlock;
 import org.voxelhorizons.furnitureshop.model.RecordedFurniture;
 
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -107,7 +109,7 @@ public final class SnapshotRepository {
 
     private static void save(Path file, LayoutSnapshot snapshot) {
         YamlConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema", 3);
+        yaml.set("schema", 4);
         for (int i = 0; i < snapshot.blocks().size(); i++) {
             RecordedBlock block = snapshot.blocks().get(i); String base = "blocks." + i;
             yaml.set(base + ".x", block.x()); yaml.set(base + ".y", block.y()); yaml.set(base + ".z", block.z());
@@ -120,10 +122,31 @@ public final class SnapshotRepository {
             RecordedFurniture furniture = snapshot.furniture().get(i); String base = "furniture." + i;
             yaml.set(base + ".definition", furniture.definition()); yaml.set(base + ".x", furniture.x());
             yaml.set(base + ".y", furniture.y()); yaml.set(base + ".z", furniture.z()); yaml.set(base + ".yaw", furniture.yaw());
+            if (furniture.dyeColor() != null) yaml.set(base + ".dye_color", furniture.dyeColor());
+            if (!furniture.inventoryContents().isEmpty())
+                yaml.set(base + ".inventory", furniture.inventoryContents());
+            if (furniture.useAnimationActive()) yaml.set(base + ".use_animation_active", true);
         }
+        Path temporary = null;
         try {
-            Files.createDirectories(file.getParent()); yaml.save(file.toFile());
-        } catch (IOException exception) { throw new IllegalStateException("Unable to save snapshot " + file, exception); }
+            Files.createDirectories(file.getParent());
+            // A crash during a metadata write must not leave a partially
+            // serialized variant that later rotates into an empty showroom.
+            temporary = Files.createTempFile(file.getParent(), "snapshot-", ".tmp");
+            yaml.save(temporary.toFile());
+            try {
+                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException unsupported) {
+                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to save snapshot " + file, exception);
+        } finally {
+            if (temporary != null) {
+                try { Files.deleteIfExists(temporary); } catch (IOException ignored) { }
+            }
+        }
     }
 
     /** Convert Bukkit nested sections to ordinary maps without losing serialized ItemStacks. */
@@ -141,6 +164,10 @@ public final class SnapshotRepository {
     private static LayoutSnapshot load(Path file) {
         if (!Files.exists(file)) throw new IllegalArgumentException("Snapshot does not exist: " + file);
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file.toFile());
+        int schema = yaml.getInt("schema", -1);
+        if (schema < 1 || schema > 4)
+            throw new IllegalStateException("Invalid snapshot schema " + schema + " in " + file
+                    + "; refusing to apply an empty or unsupported layout");
         List<RecordedBlock> blocks = new ArrayList<RecordedBlock>();
         ConfigurationSection blockSection = yaml.getConfigurationSection("blocks");
         if (blockSection != null) for (String key : blockSection.getKeys(false)) {
@@ -155,8 +182,20 @@ public final class SnapshotRepository {
         ConfigurationSection furnitureSection = yaml.getConfigurationSection("furniture");
         if (furnitureSection != null) for (String key : furnitureSection.getKeys(false)) {
             String base = "furniture." + key;
+            Object savedColor = yaml.get(base + ".dye_color");
+            if (savedColor != null && !(savedColor instanceof Number))
+                throw new IllegalArgumentException("Invalid furniture dye colour at " + base);
+            List<org.bukkit.inventory.ItemStack> contents = new ArrayList<org.bukkit.inventory.ItemStack>();
+            List<?> stored = yaml.getList(base + ".inventory");
+            if (stored != null) for (Object item : stored) {
+                if (item != null && !(item instanceof org.bukkit.inventory.ItemStack))
+                    throw new IllegalArgumentException("Invalid saved furniture ItemStack at " + base);
+                contents.add(item == null ? null : ((org.bukkit.inventory.ItemStack)item).clone());
+            }
             furniture.add(new RecordedFurniture(yaml.getString(base + ".definition"), yaml.getDouble(base + ".x"),
-                    yaml.getDouble(base + ".y"), yaml.getDouble(base + ".z"), (float) yaml.getDouble(base + ".yaw")));
+                    yaml.getDouble(base + ".y"), yaml.getDouble(base + ".z"), (float) yaml.getDouble(base + ".yaw"),
+                    savedColor == null ? null : Integer.valueOf(((Number)savedColor).intValue()), contents,
+                    yaml.getBoolean(base + ".use_animation_active", false)));
         }
         return new LayoutSnapshot(blocks, furniture);
     }
