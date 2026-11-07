@@ -20,7 +20,8 @@ import java.util.Set;
  * are available. All artwork and native inventory hitboxes are configurable.
  */
 public final class ShopPurchaseUi {
-    public static final int INVENTORY_SIZE = 9;
+    /** Three native chest rows, compatible with both Java and Bedrock UIs. */
+    public static final int INVENTORY_SIZE = 27;
     private final String title;
     private final String buttonItem;
     private final int previewSlot;
@@ -51,14 +52,24 @@ public final class ShopPurchaseUi {
     }
 
     public static ShopPurchaseUi fromConfig(FileConfiguration config) {
+        // Existing installations have explicit one-row (0..8) slot indexes.
+        // Upgrade those hitboxes to the middle row automatically. Fresh
+        // config.yml sets slot-layout-version: 2 and uses native 0..26 IDs.
+        boolean legacySlots = !config.isSet("purchase-ui.slot-layout-version")
+                || config.getInt("purchase-ui.slot-layout-version") == 1;
+        if (config.isSet("purchase-ui.slot-layout-version")
+                && config.getInt("purchase-ui.slot-layout-version") != 1
+                && config.getInt("purchase-ui.slot-layout-version") != 2) {
+            throw new IllegalArgumentException("purchase-ui.slot-layout-version must be 1 or 2");
+        }
         String title = required(config, "purchase-ui.title",
                 ":offset_-8::furniture_shop::offset_8:&rPurchase Furniture");
         String item = required(config, "purchase-ui.button-item", "voxel:ui/blank");
-        int preview = slot(config.get("purchase-ui.preview-slot"), "purchase-ui.preview-slot");
+        int preview = slot(config.get("purchase-ui.preview-slot"), "purchase-ui.preview-slot", legacySlots);
         List<Integer> cancel = slots(config.get("purchase-ui.cancel-slots"),
-                "purchase-ui.cancel-slots", Arrays.asList(1, 2));
+                "purchase-ui.cancel-slots", Arrays.asList(10, 11), legacySlots);
         List<Integer> purchase = slots(config.get("purchase-ui.purchase-slots"),
-                "purchase-ui.purchase-slots", Arrays.asList(6, 7));
+                "purchase-ui.purchase-slots", Arrays.asList(15, 16), legacySlots);
         ensureNotEmpty(cancel, "purchase-ui.cancel-slots");
         ensureNotEmpty(purchase, "purchase-ui.purchase-slots");
         Set<Integer> primary = new HashSet<Integer>();
@@ -70,13 +81,13 @@ public final class ShopPurchaseUi {
         String currencyTitle = required(config, prefix + "title",
                 ":offset_-8::furniture_shop_currency::offset_8:&rSelect Currency");
         String currencyItem = required(config, prefix + "button-item", "voxel:ui/blank");
-        int currencyPreview = slot(config.get(prefix + "preview-slot"), prefix + "preview-slot");
+        int currencyPreview = slot(config.get(prefix + "preview-slot"), prefix + "preview-slot", legacySlots);
 
         Map<String, List<Integer>> choices = new LinkedHashMap<String, List<Integer>>();
         ConfigurationSection section = config.getConfigurationSection(prefix + "currencies");
         if (section == null) {
-            choices.put("coins", Arrays.asList(1, 2));
-            choices.put("tokens", Arrays.asList(6, 7));
+            choices.put("coins", Arrays.asList(10, 11));
+            choices.put("tokens", Arrays.asList(15, 16));
         } else {
             for (String key : section.getKeys(false)) {
                 String normalized = key.trim().toLowerCase(Locale.ROOT);
@@ -87,7 +98,7 @@ public final class ShopPurchaseUi {
                     throw new IllegalArgumentException("Duplicate currency-selection ID " + key);
                 }
                 List<Integer> mapped = slots(section.get(key), prefix + "currencies." + key,
-                        Collections.<Integer>emptyList());
+                        Collections.<Integer>emptyList(), legacySlots);
                 ensureNotEmpty(mapped, prefix + "currencies." + key);
                 choices.put(normalized, mapped);
             }
@@ -112,23 +123,28 @@ public final class ShopPurchaseUi {
         return value.trim();
     }
 
-    private static int slot(Object raw, String path) {
-        return slot(raw, path, 4);
+    /** New layout is 0..26; legacy authored 0..8 hitboxes move down 9. */
+    private static int slot(Object raw, String path, boolean legacySlots) {
+        return slot(raw, path, 13, legacySlots);
     }
 
-    private static int slot(Object raw, String path, int fallback) {
+    private static int slot(Object raw, String path, int fallback, boolean legacySlots) {
         if (raw == null) return fallback;
         if (!(raw instanceof Number)) {
-            throw new IllegalArgumentException(path + " must contain integer slots 0–8");
+            throw new IllegalArgumentException(path + " must contain integer slots 0–26");
         }
         double n = ((Number) raw).doubleValue();
         if (!Double.isFinite(n) || n != Math.rint(n) || n < 0 || n >= INVENTORY_SIZE) {
-            throw new IllegalArgumentException(path + " must contain integer slots 0–8");
+            throw new IllegalArgumentException(path + " must contain integer slots 0–26");
         }
-        return (int) n;
+        int index = (int)n;
+        // Preserve old custom one-row arrangements on plugin upgrades, rather
+        // than forcing every installation to edit its existing config.yml.
+        return legacySlots && index < 9 ? index + 9 : index;
     }
 
-    private static List<Integer> slots(Object raw, String path, List<Integer> fallback) {
+    private static List<Integer> slots(Object raw, String path, List<Integer> fallback,
+                                       boolean legacySlots) {
         if (raw == null) return fallback;
         if (!(raw instanceof List)) {
             throw new IllegalArgumentException(path + " must be a list of slots");
@@ -136,7 +152,7 @@ public final class ShopPurchaseUi {
         List<Integer> result = new ArrayList<Integer>();
         for (Object item : (List<?>) raw) {
             if (item == null) throw new IllegalArgumentException(path + " contains null");
-            result.add(slot(item, path, -1));
+            result.add(slot(item, path, -1, legacySlots));
         }
         return result;
     }
